@@ -31,6 +31,30 @@ class Data(Construct):
             removal_policy=RemovalPolicy.DESTROY,
         )
 
+        self.customer_data_table = dynamodb.Table(
+            self,
+            "CustomerDataTable",
+            table_name="customer_data",
+            partition_key=dynamodb.Attribute(
+                name="customer_id",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.DESTROY,
+        )
+
+        self.analytics_data_table = dynamodb.Table(
+            self,
+            "AnalyticsDataTable",
+            table_name="analytics_data",
+            partition_key=dynamodb.Attribute(
+                name="metric_id",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.DESTROY,
+        )
+
         CfnOutput(
             self,
             "UsersTableName",
@@ -40,4 +64,14 @@ class Data(Construct):
             self,
             "PolicyTableName",
             value=self.policy_table.table_name,
+        )
+        CfnOutput(
+            self,
+            "CustomerDataTableName",
+            value=self.customer_data_table.table_name,
+        )
+        CfnOutput(
+            self,
+            "AnalyticsDataTableName",
+            value=self.analytics_data_table.table_name,
         )

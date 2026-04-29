@@ -54,7 +54,7 @@ def test_dynamodb_user_and_policy_tables_created():
     stack = IamAgentStack(app, "iam-agent-data")
     template = assertions.Template.from_stack(stack)
 
-    template.resource_count_is("AWS::DynamoDB::Table", 2)
+    template.resource_count_is("AWS::DynamoDB::Table", 4)
     template.has_resource_properties(
         "AWS::DynamoDB::Table",
         {
@@ -69,6 +69,32 @@ def test_dynamodb_user_and_policy_tables_created():
                 {
                     "AttributeName": "user_id",
                     "AttributeType": "S",
+                },
+            ],
+            "BillingMode": "PAY_PER_REQUEST",
+        },
+    )
+    template.has_resource_properties(
+        "AWS::DynamoDB::Table",
+        {
+            "TableName": "customer_data",
+            "KeySchema": [
+                {
+                    "AttributeName": "customer_id",
+                    "KeyType": "HASH",
+                },
+            ],
+            "BillingMode": "PAY_PER_REQUEST",
+        },
+    )
+    template.has_resource_properties(
+        "AWS::DynamoDB::Table",
+        {
+            "TableName": "analytics_data",
+            "KeySchema": [
+                {
+                    "AttributeName": "metric_id",
+                    "KeyType": "HASH",
                 },
             ],
             "BillingMode": "PAY_PER_REQUEST",
@@ -91,7 +117,12 @@ def test_agent_only_credentials_api_created():
             "Handler": "broker_api.handlers.credentials.handler",
             "Environment": {
                 "Variables": assertions.Match.object_like(
-                    {"OPENAI_SECRET_NAME": "openai-key"}
+                    {
+                        "OPENAI_SECRET_NAME": "openai-key",
+                        "CUSTOMER_DATA_TABLE_NAME": assertions.Match.any_value(),
+                        "ANALYTICS_DATA_TABLE_NAME": assertions.Match.any_value(),
+                        "BROKER_CREDENTIALS_ROLE_ARN": assertions.Match.any_value(),
+                    }
                 ),
             },
         },
@@ -178,5 +209,22 @@ def test_agent_only_credentials_api_created():
                 },
             ],
             "BillingMode": "PAY_PER_REQUEST",
+        },
+    )
+    template.has_resource_properties(
+        "AWS::IAM::Policy",
+        {
+            "PolicyDocument": {
+                "Statement": assertions.Match.array_with(
+                    [
+                        assertions.Match.object_like(
+                            {
+                                "Action": "sts:AssumeRole",
+                                "Effect": "Allow",
+                            }
+                        )
+                    ]
+                ),
+            },
         },
     )
