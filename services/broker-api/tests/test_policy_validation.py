@@ -162,3 +162,34 @@ def test_session_policy_uses_exact_catalog_arns():
             ],
         }
     ]
+
+
+def test_session_policy_can_add_list_tables_for_employee_console_demo():
+    catalog = {
+        "customer_data": Resource(
+            key="customer_data",
+            table_name="customer_data",
+            table_arn="arn:aws:dynamodb:ap-southeast-2:123:table/customer_data",
+            purpose="customer data",
+        )
+    }
+    decision = AccessDecision(
+        approved=True,
+        reason="Specific support request.",
+        risk="medium",
+        authorization="high",
+        duration_seconds=900,
+        grants=[{"resource_key": "customer_data", "actions": ["dynamodb:GetItem"]}],
+    )
+
+    policy = build_session_policy(
+        decision,
+        catalog,
+        include_dynamodb_list_tables=True,
+    )
+
+    assert policy["Statement"][-1] == {
+        "Effect": "Allow",
+        "Action": ["dynamodb:ListTables"],
+        "Resource": "*",
+    }

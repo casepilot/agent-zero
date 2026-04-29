@@ -95,6 +95,17 @@ def load_policy(user_id: str) -> str | None:
     return policy.strip()
 
 
+def load_user_role(user_id: str) -> str | None:
+    table = get_dynamodb_resource().Table(os.environ["USERS_TABLE_NAME"])
+    item = table.get_item(Key={"user_id": user_id}).get("Item")
+    if not item:
+        return None
+    role = item.get("role")
+    if not isinstance(role, str):
+        return None
+    return role
+
+
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     aws_request_id = request_id(context)
     request_context = event.get("requestContext", {})
@@ -211,7 +222,12 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             },
         )
 
-    session_policy = build_session_policy(decision, catalog)
+    user_role = load_user_role(user_id)
+    session_policy = build_session_policy(
+        decision,
+        catalog,
+        include_dynamodb_list_tables=user_role == "employee",
+    )
     try:
         credentials = assume_scoped_role(
             user_id=user_id,
