@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deploy Frontend"
+  short_description: "Deploy the Agent Zero frontend hosting stack."
+  default_prompt: "Deploy frontend"
