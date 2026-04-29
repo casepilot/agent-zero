@@ -155,7 +155,7 @@ def test_session_policy_uses_exact_catalog_arns():
     assert policy["Statement"] == [
         {
             "Effect": "Allow",
-            "Action": ["dynamodb:GetItem"],
+            "Action": ["dynamodb:DescribeTable", "dynamodb:GetItem"],
             "Resource": [
                 "arn:aws:dynamodb:ap-southeast-2:123:table/customer_data",
                 "arn:aws:dynamodb:ap-southeast-2:123:table/customer_data/index/*",
@@ -193,3 +193,30 @@ def test_session_policy_can_add_list_tables_for_employee_console_demo():
         "Action": ["dynamodb:ListTables"],
         "Resource": "*",
     }
+
+
+def test_session_policy_can_add_scan_for_staff_console_demo():
+    catalog = {
+        "customer_data": Resource(
+            key="customer_data",
+            table_name="customer_data",
+            table_arn="arn:aws:dynamodb:ap-southeast-2:123:table/customer_data",
+            purpose="customer data",
+        )
+    }
+    decision = AccessDecision(
+        approved=True,
+        reason="Specific support request.",
+        risk="medium",
+        authorization="high",
+        duration_seconds=900,
+        grants=[{"resource_key": "customer_data", "actions": ["dynamodb:GetItem"]}],
+    )
+
+    policy = build_session_policy(decision, catalog, include_dynamodb_scan=True)
+
+    assert policy["Statement"][0]["Action"] == [
+        "dynamodb:DescribeTable",
+        "dynamodb:GetItem",
+        "dynamodb:Scan",
+    ]

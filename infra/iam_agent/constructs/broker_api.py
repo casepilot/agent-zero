@@ -57,6 +57,7 @@ class BrokerApi(Construct):
         policy_table,
         customer_data_table,
         analytics_data_table,
+        request_logs_table,
         user_pool_client_id: str,
     ) -> None:
         super().__init__(scope, construct_id)
@@ -109,6 +110,7 @@ class BrokerApi(Construct):
                 "CUSTOMER_DATA_TABLE_ARN": customer_data_table.table_arn,
                 "ANALYTICS_DATA_TABLE_NAME": analytics_data_table.table_name,
                 "ANALYTICS_DATA_TABLE_ARN": analytics_data_table.table_arn,
+                "REQUEST_LOGS_TABLE_NAME": request_logs_table.table_name,
                 "OPENAI_SECRET_NAME": "openai-key",
             },
         )
@@ -133,6 +135,12 @@ class BrokerApi(Construct):
             )
         )
         self.broker_credentials_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["dynamodb:ListTables"],
+                resources=["*"],
+            )
+        )
+        self.broker_credentials_role.add_to_policy(
             iam.PolicyStatement(actions=["s3:*"], resources=["*"])
         )
         self.broker_lambda.add_environment(
@@ -142,6 +150,7 @@ class BrokerApi(Construct):
 
         users_table.grant_read_data(self.broker_lambda)
         policy_table.grant_read_data(self.broker_lambda)
+        request_logs_table.grant_write_data(self.broker_lambda)
         openai_secret.grant_read(self.broker_lambda)
         self.broker_credentials_role.grant_assume_role(self.broker_lambda)
 
