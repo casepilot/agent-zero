@@ -54,6 +54,7 @@ agent-zero/
       lib/
         utils.ts
       composables/
+        useAgentChat.ts
         useAmplifyAuth.ts
       middleware/
         auth.global.ts
@@ -206,8 +207,10 @@ Current state:
 - `app/app/pages/login.vue` is the login screen wired to Cognito through the
   Amplify client SDK.
 - `app/app/pages/chat.vue` is the single desktop chat interface. It starts as
-  an empty chat with a bottom prompt input, simulated streaming, and visible
-  sign out.
+  an empty chat with a bottom prompt input, live Agent API WebSocket streaming,
+  retry handling, and visible sign out.
+- `app/app/composables/useAgentChat.ts` contains the Agent API WebSocket client,
+  stream reducer, retry flow, and socket cleanup.
 - `app/app/composables/useAmplifyAuth.ts` contains shared Amplify Auth helpers,
   including access-token retrieval for WebSocket auth.
 - `app/app/middleware/auth.global.ts` protects every route except `/login`.
@@ -220,8 +223,7 @@ Current state:
   `NUXT_PUBLIC_COGNITO_USER_POOL_CLIENT_ID`. It can also hold
   `NUXT_PUBLIC_AGENT_WS_URL` for the Agent API WebSocket endpoint.
 
-Admin screens, employee request screens, and the live customer support LLM flow
-are not built yet.
+Admin screens and employee request screens are not built yet.
 
 ### `docs/`
 
@@ -322,8 +324,7 @@ Current state:
 
 This service can build a broker credentials request, but the live agent tool
 does not yet request broker credentials or use approved credentials to perform
-DynamoDB actions. The Nuxt chat screen is also still simulated and not wired to
-this WebSocket flow.
+DynamoDB actions. The Nuxt chat screen is wired to this WebSocket flow.
 
 ### `services/broker-api/`
 
@@ -458,8 +459,6 @@ The Nuxt app still needs:
 
 - admin screens for creating humans, agents, and free-text policies
 - employee screens for requesting access and receiving console URLs
-- WebSocket integration with `services/agent-api/`
-- live customer support LLM behavior instead of simulated chat streaming
 
 ### `demo-data/`
 

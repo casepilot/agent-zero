@@ -127,18 +127,29 @@ export function useAgentChat() {
   }
 
   function closeSocket() {
-    intentionalClose = true
+    const currentSocket = socket
+    connectPromise = null
+    connectionState.value = 'closed'
 
-    if (socket) {
-      socket.close()
+    if (!currentSocket) {
+      intentionalClose = false
+      return
+    }
+
+    intentionalClose = true
+    socket = null
+    currentSocket.close()
+
+    setTimeout(() => {
+      intentionalClose = false
+    }, 0)
+  }
+
+  function handleClose(closedSocket: WebSocket) {
+    if (socket === closedSocket) {
       socket = null
     }
 
-    connectPromise = null
-    connectionState.value = 'closed'
-  }
-
-  function handleClose() {
     connectionState.value = 'closed'
 
     const activeTurn = findTurn()
@@ -187,7 +198,7 @@ export function useAgentChat() {
         }
 
         if (socket === ws) {
-          handleClose()
+          handleClose(ws)
         }
       }
     })
