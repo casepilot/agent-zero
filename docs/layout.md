@@ -183,6 +183,8 @@ Nuxt app for the demo UI.
 Current state:
 
 - Nuxt 4 app using pnpm.
+- Nuxt renders as a client-side app because route protection depends on the
+  browser-side Amplify Auth session.
 - Tailwind CSS and shadcn-vue are configured.
 - `lucide-vue-next` is used for icons.
 - `/` redirects to `/chats`.

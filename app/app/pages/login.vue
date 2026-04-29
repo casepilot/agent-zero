@@ -11,6 +11,10 @@ const errorMessage = ref('')
 const isSubmitting = ref(false)
 const { signInWithPassword } = useAmplifyAuth()
 
+useHead({
+  title: 'Sign in | IAM Agent',
+})
+
 watch([username, password], ([nextUsername, nextPassword]) => {
   if (!nextUsername.trim() || !nextPassword) {
     errorMessage.value = ''

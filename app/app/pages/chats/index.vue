@@ -1,3 +1,9 @@
+<script setup lang="ts">
+useHead({
+  title: 'Chats | IAM Agent',
+})
+</script>
+
 <template>
   <main class="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#070b12] px-8 py-10 text-white">
     <div class="absolute inset-0 opacity-85">

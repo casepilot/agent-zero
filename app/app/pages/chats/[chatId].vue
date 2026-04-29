@@ -125,6 +125,10 @@ const activeChatId = computed(() => routeChatId.value ?? '')
 const activeChat = computed(() => chats.find(chat => chat.id === activeChatId.value))
 const activeMessages = computed(() => messagesByChat[activeChatId.value] ?? [])
 
+useHead(() => ({
+  title: activeChat.value ? `${activeChat.value.title} | IAM Agent` : 'Chat not found | IAM Agent',
+}))
+
 function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
   nextTick(() => {
     requestAnimationFrame(() => {
