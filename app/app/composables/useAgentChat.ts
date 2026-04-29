@@ -3,6 +3,7 @@ import { useAmplifyAuth } from './useAmplifyAuth'
 
 type TurnStatus = 'connecting' | 'waiting' | 'thinking' | 'answering' | 'complete' | 'failed'
 type ToolStatus = 'in_progress' | 'completed' | 'error'
+type ToolTone = 'running' | 'completed' | 'approved' | 'denied' | 'failed'
 
 interface StreamEnvelope {
   type: 'stream'
@@ -29,7 +30,11 @@ export interface AgentToolCall {
   id: string
   name: string
   status: ToolStatus
-  arguments?: string
+  label: string
+  statusLabel: string
+  detail: string
+  tone: ToolTone
+  resultId?: string
 }
 
 export interface AgentChatTurn {
@@ -77,6 +82,291 @@ function createId(prefix: string) {
   }
 
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {}
+}
+
+function numberValue(value: unknown) {
+  return typeof value === 'number' ? value : null
+}
+
+function parseToolOutput(value: unknown) {
+  if (isRecord(value)) {
+    return value
+  }
+
+  if (typeof value !== 'string' || !value.trim()) {
+    return {}
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown
+    return recordValue(parsed)
+  } catch {
+    return {}
+  }
+}
+
+function toolBaseLabel(toolName: string) {
+  switch (toolName) {
+    case 'list_known_resources':
+      return 'Checking available resources'
+    case 'run_dynamodb_operation':
+      return 'Checking data access'
+    case 'request_aws_access':
+      return 'Requesting access review'
+    case 'write_user_policy':
+      return 'Updating access policy'
+    case 'create_cognito_user':
+      return 'Creating user'
+    default:
+      return 'Running secure tool'
+  }
+}
+
+function initialToolPresentation(toolName: string, status: ToolStatus) {
+  if (status === 'error') {
+    return {
+      label: toolBaseLabel(toolName),
+      statusLabel: 'Failed',
+      detail: 'The tool could not complete this step.',
+      tone: 'failed' as ToolTone,
+    }
+  }
+
+  if (status === 'completed') {
+    return {
+      label: toolBaseLabel(toolName),
+      statusLabel: 'Complete',
+      detail: '',
+      tone: 'completed' as ToolTone,
+    }
+  }
+
+  return {
+    label: toolBaseLabel(toolName),
+    statusLabel: 'Running',
+    detail: '',
+    tone: 'running' as ToolTone,
+  }
+}
+
+function resultDecision(output: Record<string, unknown>) {
+  const body = recordValue(output.body)
+  const decision = recordValue(body.decision || output.decision)
+  const approved = decision.approved
+
+  return {
+    body,
+    decision,
+    approved: typeof approved === 'boolean' ? approved : null,
+    reason: stringValue(decision.reason),
+  }
+}
+
+function errorCode(output: Record<string, unknown>) {
+  const body = recordValue(output.body)
+  return stringValue(output.error) || stringValue(body.error)
+}
+
+function isDeniedResult(output: Record<string, unknown>) {
+  const { approved } = resultDecision(output)
+  const body = recordValue(output.body)
+  const code = errorCode(output)
+  const statusCode = numberValue(output.status_code)
+
+  return approved === false
+    || statusCode === 403
+    || stringValue(body.status) === 'denied'
+    || ['access_denied', 'no_policy_found', 'AccessDeniedException'].includes(code)
+}
+
+function safeFailureDetail(output: Record<string, unknown>) {
+  switch (errorCode(output)) {
+    case 'missing_reason':
+      return 'A clear business reason is required.'
+    case 'missing_required_fields':
+      return 'Required fields are missing.'
+    case 'invalid_group':
+      return 'The requested user role is not valid.'
+    case 'unknown_resource':
+      return 'The requested resource is not available.'
+    case 'unsupported_operation':
+      return 'The requested data operation is not supported.'
+    case 'decision_failed':
+    case 'llm_failed':
+      return 'The access review service could not make a decision.'
+    case 'audit_log_failed':
+      return 'The access review could not be safely recorded.'
+    case 'credential_issue_failed':
+      return 'Temporary credentials could not be issued.'
+    case 'AccessDeniedException':
+    case 'access_denied':
+      return 'Access was not granted for this step.'
+    case 'no_policy_found':
+      return 'No matching access policy was found.'
+    default:
+      return 'The tool could not complete this step.'
+  }
+}
+
+function brokerDecisionDetail(output: Record<string, unknown>) {
+  const { body, reason } = resultDecision(output)
+
+  if (reason) {
+    return reason
+  }
+
+  if (output.ok === true || stringValue(body.status) === 'approved') {
+    return 'Temporary scoped access was approved.'
+  }
+
+  return safeFailureDetail(output)
+}
+
+function dataOperationDetail(output: Record<string, unknown>) {
+  const response = recordValue(output.response)
+  const items = response.Items
+
+  if (Array.isArray(items)) {
+    return `Returned ${items.length} ${items.length === 1 ? 'record' : 'records'}.`
+  }
+
+  if (isRecord(response.Item)) {
+    return 'Returned 1 record.'
+  }
+
+  if (isRecord(response.Attributes)) {
+    return 'Updated and returned the changed record.'
+  }
+
+  return 'Operation completed.'
+}
+
+function summarizeToolResult(toolName: string, status: ToolStatus, output: Record<string, unknown>) {
+  const ok = output.ok === true
+  const denied = isDeniedResult(output)
+
+  if (toolName === 'request_aws_access') {
+    if (ok) {
+      return {
+        label: 'Access review complete',
+        statusLabel: 'Approved',
+        detail: brokerDecisionDetail(output),
+        tone: 'approved' as ToolTone,
+      }
+    }
+
+    if (denied) {
+      return {
+        label: 'Access review complete',
+        statusLabel: 'Denied',
+        detail: brokerDecisionDetail(output),
+        tone: 'denied' as ToolTone,
+      }
+    }
+
+    return {
+      label: 'Access review failed',
+      statusLabel: 'Failed',
+      detail: safeFailureDetail(output),
+      tone: 'failed' as ToolTone,
+    }
+  }
+
+  if (toolName === 'list_known_resources') {
+    const resources = Array.isArray(output.resources) ? output.resources.length : 0
+
+    return {
+      label: 'Resource catalog checked',
+      statusLabel: ok ? 'Complete' : 'Failed',
+      detail: ok
+        ? `${resources} ${resources === 1 ? 'resource is' : 'resources are'} available.`
+        : safeFailureDetail(output),
+      tone: ok ? 'completed' as ToolTone : 'failed' as ToolTone,
+    }
+  }
+
+  if (toolName === 'run_dynamodb_operation') {
+    if (ok) {
+      return {
+        label: 'Data operation complete',
+        statusLabel: 'Approved',
+        detail: dataOperationDetail(output),
+        tone: 'approved' as ToolTone,
+      }
+    }
+
+    if (denied) {
+      return {
+        label: 'Data access blocked',
+        statusLabel: 'Denied',
+        detail: safeFailureDetail(output),
+        tone: 'denied' as ToolTone,
+      }
+    }
+
+    return {
+      label: 'Data operation failed',
+      statusLabel: 'Failed',
+      detail: safeFailureDetail(output),
+      tone: 'failed' as ToolTone,
+    }
+  }
+
+  if (toolName === 'write_user_policy') {
+    if (ok) {
+      return {
+        label: 'Policy update complete',
+        statusLabel: 'Approved',
+        detail: 'The access policy was updated.',
+        tone: 'approved' as ToolTone,
+      }
+    }
+
+    return {
+      label: denied ? 'Policy update blocked' : 'Policy update failed',
+      statusLabel: denied ? 'Denied' : 'Failed',
+      detail: safeFailureDetail(output),
+      tone: denied ? 'denied' as ToolTone : 'failed' as ToolTone,
+    }
+  }
+
+  if (toolName === 'create_cognito_user') {
+    if (ok) {
+      return {
+        label: 'User creation complete',
+        statusLabel: 'Approved',
+        detail: 'The application user was created or updated.',
+        tone: 'approved' as ToolTone,
+      }
+    }
+
+    return {
+      label: denied ? 'User creation blocked' : 'User creation failed',
+      statusLabel: denied ? 'Denied' : 'Failed',
+      detail: safeFailureDetail(output),
+      tone: denied ? 'denied' as ToolTone : 'failed' as ToolTone,
+    }
+  }
+
+  if (status === 'error' || !ok) {
+    return {
+      label: toolBaseLabel(toolName),
+      statusLabel: denied ? 'Denied' : 'Failed',
+      detail: safeFailureDetail(output),
+      tone: denied ? 'denied' as ToolTone : 'failed' as ToolTone,
+    }
+  }
+
+  return {
+    label: toolBaseLabel(toolName),
+    statusLabel: 'Complete',
+    detail: 'Tool step completed.',
+    tone: 'completed' as ToolTone,
+  }
 }
 
 function buildErrorMessage(error: unknown) {
@@ -430,8 +720,6 @@ export function useAgentChat() {
       requestId: turn.requestId,
       threadId: turn.threadId,
       parentId: turn.parentId,
-      tenantId: 'agent-zero-demo',
-      caseId: 'agent-zero-demo',
       message: turn.userText,
     }
   }
@@ -725,15 +1013,27 @@ export function useAgentChat() {
     const message = item.message
     const data = isRecord(message.data) ? message.data : {}
 
+    if (data.type === 'tool_result') {
+      handleToolResult(
+        turn,
+        stringValue(message.id) || stringValue(item.id) || createId('tool-result'),
+        data,
+      )
+      return
+    }
+
     if (data.type !== 'tool_call') {
       return
     }
 
+    const name = stringValue(data.tool_name) || 'tool_call'
+    const status = stringValue(data.status) === 'completed' ? 'completed' : 'in_progress'
+
     upsertTool(turn, {
       id: stringValue(message.id) || stringValue(item.id) || createId('tool'),
-      name: stringValue(data.tool_name) || 'Tool call',
-      status: stringValue(data.status) === 'completed' ? 'completed' : 'in_progress',
-      arguments: stringValue(data.arguments),
+      name,
+      status,
+      ...initialToolPresentation(name, status),
     })
   }
 
@@ -769,6 +1069,11 @@ export function useAgentChat() {
       return
     }
 
+    if (item.type === 'tool_result') {
+      handleToolResult(turn, stringValue(item.id) || createId('tool-result'), item)
+      return
+    }
+
     if (item.type === 'tool_call' && item.operation === 'replace') {
       const tool = turn.tools.find((candidate) => candidate.id === item.id)
 
@@ -776,6 +1081,33 @@ export function useAgentChat() {
         tool.status = stringValue(item.status) === 'completed' ? 'completed' : tool.status
       }
     }
+  }
+
+  function handleToolResult(turn: AgentChatTurn, messageId: string, data: Record<string, unknown>) {
+    const name = stringValue(data.tool_name) || 'tool_result'
+    const status = stringValue(data.status) === 'error' ? 'error' : 'completed'
+    const output = parseToolOutput(data.output)
+    const presentation = summarizeToolResult(name, status, output)
+    const existing = [...turn.tools]
+      .reverse()
+      .find((tool) => tool.name === name && !tool.resultId)
+
+    if (existing) {
+      Object.assign(existing, {
+        status,
+        resultId: messageId,
+        ...presentation,
+      })
+      return
+    }
+
+    upsertTool(turn, {
+      id: messageId,
+      name,
+      status,
+      resultId: messageId,
+      ...presentation,
+    })
   }
 
   function patchMessage(turn: AgentChatTurn, message: Record<string, unknown>) {

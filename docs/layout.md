@@ -67,6 +67,10 @@ agent-zero/
       plugins/
         amplify.client.ts
 
+  bootstrap/
+    __init__.py
+    bank_data.py
+
   docs/
     api.md
     project.md
@@ -167,9 +171,6 @@ agent-zero/
       layout-refresh.out.log
   app/
     .env
-    app/
-      pages/
-        chats/        # empty local folder
     node_modules/
     .nuxt/
     .output/
@@ -214,7 +215,8 @@ Current state:
   Amplify client SDK.
 - `app/app/pages/chat.vue` is the single desktop chat interface. It starts as
   an empty chat with a bottom prompt input, live Agent API WebSocket streaming,
-  retry handling, and visible sign out.
+  safe tool status summaries, markdown-rendered answer streaming, retry
+  handling, and visible sign out.
 - `app/app/composables/useAgentChat.ts` contains the Agent API WebSocket client,
   stream reducer, retry flow, and socket cleanup.
 - `app/app/composables/useAmplifyAuth.ts` contains shared Amplify Auth helpers,
@@ -244,6 +246,20 @@ Current docs:
 - `to_do.md` is the source of truth for build status and next work.
 - `layout.md` describes the repo layout.
 
+### `bootstrap/`
+
+Checked-in Python package for demo seed data.
+
+Current files:
+
+- `bank_data.py` contains bank demo users, group names, free-text access
+  policies, customer profiles, balances, transactions, operational metrics, and
+  old demo usernames to clean up.
+- `__init__.py` makes the folder importable by scripts.
+
+Keep reusable seed data here when it is shared by scripts or tests. Keep script
+control flow in `scripts/`.
+
 ### `infra/`
 
 Python AWS CDK app.
@@ -259,8 +275,8 @@ Current constructs:
   - `policy-table`
   - `bank_customer_profiles`
   - `bank_operational_metrics`
-  - `transactions`
-  - `account_data`
+  - `bank_transactions`
+  - `bank_balances`
   - `request_logs`
 - `broker_api.py` creates:
   - the broad broker credentials role used with scoped STS session policies
@@ -349,8 +365,9 @@ Current state:
 - Loads the principal profile from `users-table`.
 - Loads a principal policy from `policy-table`.
 - Loads the OpenAI key from Secrets Manager.
-- Builds a resource catalog for `bank_customer_profiles`, `bank_operational_metrics`, and
-  `policy_table`.
+- Builds a resource catalog for `users_table`, `user_pool`,
+  `bank_customer_profiles`, `bank_operational_metrics`, `bank_transactions`,
+  `bank_balances`, and `policy_table`.
 - Calls an OpenAI reviewer for a structured access decision.
 - Validates decisions with deterministic allowlists, deny rules, and schema
   checks.
@@ -382,9 +399,10 @@ Local helper scripts.
 
 Current scripts:
 
-- `bootstrap_demo_users.py` bootstraps demo Cognito users, the demo agent
-  record, demo policies, `bank_customer_profiles` rows, and `bank_operational_metrics` rows. It
-  also supports a dry-run teardown by default.
+- `bootstrap_demo_users.py` imports data from `bootstrap/bank_data.py` and
+  bootstraps bank demo Cognito users, principal rows, policies,
+  `bank_customer_profiles`, `bank_operational_metrics`, `bank_transactions`, and
+  `bank_balances`. It also supports teardown, with dry-run teardown by default.
 - `deploy_frontend.sh` runs the single-stack CDK deploy for the frontend hosting
   path.
 - `automation/update_layout_with_codex.sh` runs Codex to refresh this layout
@@ -431,7 +449,6 @@ agent-zero/
     shared/
 
   demo-data/
-    customers.json
     flights.json
     bookings.json
     sensitive-internal.json
@@ -474,9 +491,9 @@ The Nuxt app still needs:
 
 Planned standalone fake data for the demo.
 
-Some demo data currently lives inline in `scripts/bootstrap_demo_users.py`,
-including customer, analytics, transaction, and account rows. Move or copy it
-here if the project needs reusable fixtures.
+Bank demo data currently lives in `bootstrap/bank_data.py`. Use `demo-data/`
+for future standalone fixtures such as flights, bookings, or sensitive internal
+records if the demo still needs them.
 
 ### More Docs
 

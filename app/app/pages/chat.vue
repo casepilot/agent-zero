@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MarkdownIt from 'markdown-it'
 import {
   AlertCircle,
   Bot,
@@ -21,6 +22,22 @@ const draft = ref('')
 const messagesEl = ref<HTMLElement | null>(null)
 const sessionProfile = ref<AuthSessionProfile | null>(null)
 const sessionProfileError = ref('')
+const markdown = new MarkdownIt({
+  html: false,
+  linkify: true,
+  breaks: true,
+})
+const defaultLinkOpen = markdown.renderer.rules.link_open
+  || ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options))
+
+markdown.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+  const token = tokens[idx]
+  token?.attrSet('target', '_blank')
+  token?.attrSet('rel', 'noreferrer')
+
+  return defaultLinkOpen(tokens, idx, options, env, self)
+}
+
 const { getSessionProfile, signOut: signOutFromAuth } = useAmplifyAuth()
 const {
   turns,
@@ -86,6 +103,50 @@ function turnStatusText(turn: AgentChatTurn) {
 
 function isTurnLoading(turn: AgentChatTurn) {
   return ['connecting', 'waiting', 'thinking', 'answering'].includes(turn.status)
+}
+
+function renderMarkdown(value: string) {
+  return markdown.render(value)
+}
+
+function toolToneClass(tool: AgentChatTurn['tools'][number]) {
+  if (tool.tone === 'approved' || tool.tone === 'completed') {
+    return 'border-emerald-200/14 bg-emerald-300/[0.08] text-emerald-100'
+  }
+
+  if (tool.tone === 'denied') {
+    return 'border-amber-200/18 bg-amber-300/[0.09] text-amber-100'
+  }
+
+  if (tool.tone === 'failed') {
+    return 'border-red-300/18 bg-red-500/[0.10] text-red-100'
+  }
+
+  return 'border-sky-200/12 bg-slate-950/32 text-slate-300'
+}
+
+function toolStatusClass(tool: AgentChatTurn['tools'][number]) {
+  if (tool.tone === 'approved' || tool.tone === 'completed') {
+    return 'text-emerald-200'
+  }
+
+  if (tool.tone === 'denied') {
+    return 'text-amber-200'
+  }
+
+  if (tool.tone === 'failed') {
+    return 'text-red-200'
+  }
+
+  return 'text-sky-200'
+}
+
+function isToolLoading(tool: AgentChatTurn['tools'][number]) {
+  return tool.tone === 'running'
+}
+
+function isToolSuccessful(tool: AgentChatTurn['tools'][number]) {
+  return tool.tone === 'approved' || tool.tone === 'completed'
 }
 
 const displayName = computed(() => {
@@ -252,35 +313,50 @@ onBeforeUnmount(() => {
                     <div
                       v-for="tool in turn.tools"
                       :key="tool.id"
-                      class="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-slate-950/32 px-3 py-2 text-sm text-slate-300"
+                      class="rounded-lg border px-3 py-2 text-sm"
+                      :class="toolToneClass(tool)"
                     >
-                      <span class="flex min-w-0 items-center gap-2">
-                        <Wrench class="size-4 shrink-0 text-sky-200" />
-                        <span class="truncate">{{ tool.name }}</span>
-                      </span>
-                      <span
-                        class="flex shrink-0 items-center gap-1.5 text-xs"
-                        :class="tool.status === 'completed' ? 'text-emerald-200' : 'text-sky-200'"
+                      <div class="flex items-center justify-between gap-3">
+                        <span class="flex min-w-0 items-center gap-2">
+                          <Wrench
+                            class="size-4 shrink-0"
+                            :class="toolStatusClass(tool)"
+                          />
+                          <span class="truncate font-medium">{{ tool.label }}</span>
+                        </span>
+                        <span
+                          class="flex shrink-0 items-center gap-1.5 text-xs font-medium"
+                          :class="toolStatusClass(tool)"
+                        >
+                          <CheckCircle2
+                            v-if="isToolSuccessful(tool)"
+                            class="size-3.5"
+                          />
+                          <AlertCircle
+                            v-else-if="tool.tone === 'denied' || tool.tone === 'failed'"
+                            class="size-3.5"
+                          />
+                          <Loader2
+                            v-else-if="isToolLoading(tool)"
+                            class="size-3.5 animate-spin"
+                          />
+                          {{ tool.statusLabel }}
+                        </span>
+                      </div>
+                      <p
+                        v-if="tool.detail"
+                        class="mt-1.5 text-xs leading-5 opacity-75"
                       >
-                        <CheckCircle2
-                          v-if="tool.status === 'completed'"
-                          class="size-3.5"
-                        />
-                        <Loader2
-                          v-else
-                          class="size-3.5 animate-spin"
-                        />
-                        {{ tool.status === 'completed' ? 'Done' : 'Running' }}
-                      </span>
+                        {{ tool.detail }}
+                      </p>
                     </div>
                   </div>
 
-                  <p
+                  <div
                     v-if="turn.answer"
-                    class="whitespace-pre-wrap"
-                  >
-                    {{ turn.answer }}
-                  </p>
+                    class="markdown-body"
+                    v-html="renderMarkdown(turn.answer)"
+                  />
                   <div
                     v-else-if="turn.status !== 'failed'"
                     class="flex items-center gap-2 text-slate-300"
