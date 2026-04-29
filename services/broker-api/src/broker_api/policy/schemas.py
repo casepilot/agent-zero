@@ -3,7 +3,15 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-ResourceKey = Literal["customer_data", "analytics_data", "policy_table"]
+ResourceKey = Literal[
+    "users_table",
+    "user_pool",
+    "customer_data",
+    "analytics_data",
+    "transactions",
+    "account_data",
+    "policy_table",
+]
 AwsAction = Literal[
     "dynamodb:GetItem",
     "dynamodb:BatchGetItem",
@@ -12,6 +20,11 @@ AwsAction = Literal[
     "dynamodb:PutItem",
     "dynamodb:UpdateItem",
     "dynamodb:DeleteItem",
+    "cognito-idp:AdminAddUserToGroup",
+    "cognito-idp:AdminCreateUser",
+    "cognito-idp:AdminGetUser",
+    "cognito-idp:AdminSetUserPassword",
+    "cognito-idp:AdminUpdateUserAttributes",
 ]
 RiskLevel = Literal["low", "medium", "high", "critical"]
 AuthorizationLevel = Literal["low", "medium", "high"]

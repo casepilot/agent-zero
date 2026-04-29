@@ -120,6 +120,43 @@ def test_admin_can_write_policy_table():
     )
 
 
+def test_transactions_read_access_is_valid():
+    decision = AccessDecision(
+        approved=True,
+        reason="Transaction reporting request.",
+        risk="medium",
+        authorization="high",
+        duration_seconds=900,
+        grants=[{"resource_key": "transactions", "actions": ["dynamodb:Scan"]}],
+    )
+
+    validated = validate_decision(
+        decision=decision,
+        policy_text=ANALYST_POLICY,
+        reason="Review transaction rows for reporting.",
+    )
+
+    assert validated is decision
+
+
+def test_users_table_is_read_only():
+    decision = AccessDecision(
+        approved=True,
+        reason="Policy admin wants to edit the user directory.",
+        risk="high",
+        authorization="low",
+        duration_seconds=900,
+        grants=[{"resource_key": "users_table", "actions": ["dynamodb:UpdateItem"]}],
+    )
+
+    with pytest.raises(ValueError, match="users_table"):
+        validate_decision(
+            decision=decision,
+            policy_text=ADMIN_POLICY,
+            reason="Update a user directory row.",
+        )
+
+
 def test_schema_rejects_unknown_resource_and_excess_duration():
     with pytest.raises(Exception):
         AccessDecision(
@@ -220,3 +257,30 @@ def test_session_policy_can_add_scan_for_staff_console_demo():
         "dynamodb:GetItem",
         "dynamodb:Scan",
     ]
+
+
+def test_account_data_session_policy_scopes_leading_key_to_user():
+    catalog = {
+        "account_data": Resource(
+            key="account_data",
+            table_name="account_data",
+            table_arn="arn:aws:dynamodb:ap-southeast-2:123:table/account_data",
+            purpose="account data",
+        )
+    }
+    decision = AccessDecision(
+        approved=True,
+        reason="Own account lookup.",
+        risk="low",
+        authorization="high",
+        duration_seconds=900,
+        grants=[{"resource_key": "account_data", "actions": ["dynamodb:GetItem"]}],
+    )
+
+    policy = build_session_policy(decision, catalog, user_id="user-123")
+
+    assert policy["Statement"][0]["Condition"] == {
+        "ForAllValues:StringEquals": {
+            "dynamodb:LeadingKeys": ["user-123"],
+        }
+    }

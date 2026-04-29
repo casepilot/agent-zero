@@ -28,6 +28,10 @@ Rules:
   analytics_data access.
 - policy_table controls access policy. Only admins may get policy_table write
   access for policy management work.
+- user_pool controls Cognito user creation and group membership. Only admins or
+  HR/people-operations users may get user_pool access for user management work.
+- users_table stores application principal records. Only admins or HR/people-
+  operations users may write it for user management work.
 - Deny vague requests like "I need everything" or "debugging".
 - If denied, return approved=false and no grants.
 - Always include risk and authorization.

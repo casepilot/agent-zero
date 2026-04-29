@@ -46,8 +46,6 @@ Preferred frontend payload:
   "requestId": "turn-uuid",
   "threadId": "thread-uuid",
   "parentId": "turn-uuid",
-  "tenantId": "tenant-or-demo-id",
-  "caseId": "case-or-demo-id",
   "message": "tell a story about ducks"
 }
 ```
@@ -121,9 +119,7 @@ All UI-renderable assistant events are sent as top-level `type: "stream"`.
 {
   "type": "stream",
   "requestId": "turn-uuid",
-  "tenantId": "tenant-or-user-id",
   "threadId": "thread-uuid",
-  "caseId": "case-or-demo-id",
   "parentId": "turn-uuid",
   "streamType": "delta",
   "timestamp": 1777444500000,
@@ -194,8 +190,6 @@ Used for full message objects, currently mainly tool calls.
       "id": "tool-message-id",
       "message": {
         "id": "tool-message-id",
-        "caseId": "case-or-demo-id",
-        "tenantId": "tenant-or-user-id",
         "createdAt": "2026-04-29T04:35:00Z",
         "itemType": "assistantMessage",
         "data": {
@@ -208,7 +202,7 @@ Used for full message objects, currently mainly tool calls.
           "status": "in_progress",
           "summary": null,
           "arguments": "{\"reason\":\"demo\"}",
-          "tool_name": "check_agent_employee_access",
+          "tool_name": "run_dynamodb_operation",
           "call_id": "call-id",
           "output": null,
           "content": null,
@@ -264,6 +258,8 @@ Message types:
 - `assistant_message`: final user-visible answer.
 - `reasoning`: visible reasoning summary only, not private chain-of-thought.
 - `tool_call`: a tool call lifecycle event.
+- `tool_result`: a visible tool output or tool error, including AWS failures
+  and Broker approval/denial review summaries.
 
 ## Assistant Answer Streaming
 
@@ -363,13 +359,18 @@ Frontend behavior:
 - Mark that same row completed on `replace`.
 - Match by `id`.
 
-Current hard-coded demo tool:
+Real tools currently include:
 
 ```text
-check_agent_employee_access
+list_known_resources
+run_dynamodb_operation
+request_aws_access
+write_user_policy
 ```
 
-This exists so the frontend can build the tool-call UI before real broker-backed support tools are fully wired.
+Tool outputs are streamed as `tool_result` messages. AWS errors such as
+`AccessDeniedException` and Broker approval/denial reviews should be displayed
+as tool results.
 
 ## Reasoning Summary Streaming
 
@@ -513,7 +514,7 @@ Observed live sequence:
 - authenticated connect returns `101`
 - `ack`
 - `message_marker: cot_token`
-- `completed_message` for `check_agent_employee_access`
+- `completed_message` for `run_dynamodb_operation`
 - `delta replace` marking the tool call completed
 - `message_marker: generating_summary`
 - `message_marker: user_visible_token`
@@ -521,4 +522,3 @@ Observed live sequence:
 - `delta patch` completing the assistant message
 - `message_marker: end_turn`
 - `done`
-

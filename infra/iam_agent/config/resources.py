@@ -5,5 +5,6 @@ AWS_REGION = "ap-southeast-2"
 
 ADMIN_GROUP_NAME = "admin"
 EMPLOYEE_GROUP_NAME = "employee"
+CUSTOMER_GROUP_NAME = "customer"
 
 APP_ROOT = "app"

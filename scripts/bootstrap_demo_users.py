@@ -11,6 +11,7 @@ from botocore.exceptions import ClientError
 
 ADMIN_GROUP = "admin"
 EMPLOYEE_GROUP = "employee"
+CUSTOMER_GROUP = "customer"
 DEFAULT_PASSWORD = "Hackathon123!"
 
 HUMAN_USERS = [
@@ -28,6 +29,22 @@ HUMAN_USERS = [
         "group": EMPLOYEE_GROUP,
         "role": EMPLOYEE_GROUP,
         "name": "Employee One",
+        "is_human": True,
+    },
+    {
+        "username": "analyst@example.com",
+        "password": DEFAULT_PASSWORD,
+        "group": EMPLOYEE_GROUP,
+        "role": EMPLOYEE_GROUP,
+        "name": "Analyst User",
+        "is_human": True,
+    },
+    {
+        "username": "customer@example.com",
+        "password": DEFAULT_PASSWORD,
+        "group": CUSTOMER_GROUP,
+        "role": CUSTOMER_GROUP,
+        "name": "Customer User",
         "is_human": True,
     },
 ]
@@ -118,6 +135,32 @@ ANALYTICS_ROWS = [
     },
 ]
 
+TRANSACTION_ROWS = [
+    {
+        "transaction_id": f"txn-{index:03d}",
+        "customer_id": f"cust-{((index - 1) % 25) + 1:03d}",
+        "amount": amount,
+        "currency": "USD",
+        "status": status,
+        "created_at": f"2026-04-{((index - 1) % 28) + 1:02d}T10:00:00Z",
+    }
+    for index, (amount, status) in enumerate(
+        [
+            (49, "settled"),
+            (199, "settled"),
+            (29, "pending"),
+            (499, "settled"),
+            (99, "failed"),
+            (149, "settled"),
+            (19, "refunded"),
+            (299, "settled"),
+            (79, "pending"),
+            (999, "settled"),
+        ],
+        start=1,
+    )
+]
+
 DEMO_POLICIES = {
     "admin@example.com": (
         "Admin User is an identity and access administrator. Their job is to "
@@ -132,6 +175,18 @@ DEMO_POLICIES = {
         "access to relevant company systems when the request is tied to a "
         "specific ticket and the access is limited to support work. They are "
         "not an access administrator and should not change access policies."
+    ),
+    "analyst@example.com": (
+        "Analyst User works in company operations analytics. Their job is to "
+        "review transaction and business metric data for reporting, trend "
+        "analysis, and operational finance questions. They are not an access "
+        "administrator and should not change policies."
+    ),
+    "customer@example.com": (
+        "Customer User is an end customer using the customer portal. They may "
+        "request access only to their own account self-service information and "
+        "must not access other customers, company analytics, transactions, or "
+        "policy data."
     ),
     "customer_support_agent": (
         "customer_support_agent is a customer support AI agent. Its job is to "
@@ -266,8 +321,11 @@ def bootstrap_demo_users(
     policy_table: Any,
     customer_data_table: Any,
     analytics_data_table: Any,
+    transactions_table: Any,
+    account_data_table: Any,
     user_pool_id: str,
 ) -> None:
+    account_rows = []
     for user in HUMAN_USERS:
         user_id = ensure_cognito_user(cognito, user_pool_id, user)
         users_table.put_item(
@@ -287,6 +345,17 @@ def bootstrap_demo_users(
             }
         )
         print(f"Bootstrapped demo policy for {user['username']}")
+        if user["role"] == CUSTOMER_GROUP:
+            account_rows.append(
+                {
+                    "user_id": user_id,
+                    "name": user["name"],
+                    "account_balance": "128.42",
+                    "currency": "USD",
+                    "plan": "starter",
+                    "account_status": "active",
+                }
+            )
 
     users_table.put_item(Item=AGENT_USER)
     print(f"Bootstrapped agent user {AGENT_USER['user_id']}")
@@ -307,6 +376,16 @@ def bootstrap_demo_users(
         for row in ANALYTICS_ROWS:
             batch.put_item(Item=row)
     print(f"Bootstrapped {len(ANALYTICS_ROWS)} analytics_data rows")
+
+    with transactions_table.batch_writer() as batch:
+        for row in TRANSACTION_ROWS:
+            batch.put_item(Item=row)
+    print(f"Bootstrapped {len(TRANSACTION_ROWS)} transactions rows")
+
+    with account_data_table.batch_writer() as batch:
+        for row in account_rows:
+            batch.put_item(Item=row)
+    print(f"Bootstrapped {len(account_rows)} account_data rows")
 
 
 def delete_users_table_item(users_table: Any, user_id: str, dry_run: bool) -> None:
@@ -381,6 +460,8 @@ def teardown_demo_users(
     policy_table: Any,
     customer_data_table: Any,
     analytics_data_table: Any,
+    transactions_table: Any,
+    account_data_table: Any,
     user_pool_id: str,
     dry_run: bool,
 ) -> None:
@@ -403,6 +484,12 @@ def teardown_demo_users(
                 policy_table,
                 {"user_id": users_table_id},
                 "DynamoDB policy-table item",
+                dry_run,
+            )
+            delete_table_item(
+                account_data_table,
+                {"user_id": users_table_id},
+                "DynamoDB account_data item",
                 dry_run,
             )
 
@@ -435,6 +522,13 @@ def teardown_demo_users(
             "DynamoDB analytics_data item",
             dry_run,
         )
+    for row in TRANSACTION_ROWS:
+        delete_table_item(
+            transactions_table,
+            {"transaction_id": row["transaction_id"]},
+            "DynamoDB transactions item",
+            dry_run,
+        )
 
 
 def main() -> int:
@@ -450,16 +544,22 @@ def main() -> int:
     policy_table_name = find_output(outputs, "PolicyTableName")
     customer_data_table_name = find_output(outputs, "CustomerDataTableName")
     analytics_data_table_name = find_output(outputs, "AnalyticsDataTableName")
+    transactions_table_name = find_output(outputs, "TransactionsTableName")
+    account_data_table_name = find_output(outputs, "AccountDataTableName")
     users_table = dynamodb.Table(users_table_name)
     policy_table = dynamodb.Table(policy_table_name)
     customer_data_table = dynamodb.Table(customer_data_table_name)
     analytics_data_table = dynamodb.Table(analytics_data_table_name)
+    transactions_table = dynamodb.Table(transactions_table_name)
+    account_data_table = dynamodb.Table(account_data_table_name)
 
     print(f"Using Cognito user pool: {user_pool_id}")
     print(f"Using users table: {users_table_name}")
     print(f"Using policy table: {policy_table_name}")
     print(f"Using customer data table: {customer_data_table_name}")
     print(f"Using analytics data table: {analytics_data_table_name}")
+    print(f"Using transactions table: {transactions_table_name}")
+    print(f"Using account data table: {account_data_table_name}")
 
     if args.command == "bootstrap":
         if args.execute:
@@ -470,6 +570,8 @@ def main() -> int:
             policy_table,
             customer_data_table,
             analytics_data_table,
+            transactions_table,
+            account_data_table,
             user_pool_id,
         )
     else:
@@ -479,6 +581,8 @@ def main() -> int:
             policy_table=policy_table,
             customer_data_table=customer_data_table,
             analytics_data_table=analytics_data_table,
+            transactions_table=transactions_table,
+            account_data_table=account_data_table,
             user_pool_id=user_pool_id,
             dry_run=not args.execute,
         )

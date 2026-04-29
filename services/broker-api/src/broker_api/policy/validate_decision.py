@@ -12,9 +12,20 @@ WRITE_ACTIONS = {
     "dynamodb:UpdateItem",
     "dynamodb:DeleteItem",
 }
+COGNITO_USER_ADMIN_ACTIONS = {
+    "cognito-idp:AdminAddUserToGroup",
+    "cognito-idp:AdminCreateUser",
+    "cognito-idp:AdminGetUser",
+    "cognito-idp:AdminSetUserPassword",
+    "cognito-idp:AdminUpdateUserAttributes",
+}
 ALLOWED_ACTIONS_BY_RESOURCE = {
+    "users_table": READ_ACTIONS | WRITE_ACTIONS,
+    "user_pool": COGNITO_USER_ADMIN_ACTIONS,
     "customer_data": READ_ACTIONS | WRITE_ACTIONS,
     "analytics_data": READ_ACTIONS,
+    "transactions": READ_ACTIONS,
+    "account_data": READ_ACTIONS | WRITE_ACTIONS,
     "policy_table": READ_ACTIONS | WRITE_ACTIONS,
 }
 
@@ -37,6 +48,7 @@ def validate_decision(
     combined = f"{policy} {request_reason}"
 
     is_admin = _contains_any(policy, {"admin", "administrator", "policy admin"})
+    is_hr = _contains_any(policy, {"hr", "human resources", "people operations"})
     is_analyst = _contains_any(policy, {"analyst", "business intelligence"})
     looks_like_customer = _contains_any(
         combined,
@@ -60,6 +72,14 @@ def validate_decision(
         if grant.resource_key == "customer_data":
             if is_analyst and not is_admin:
                 raise ValueError("analyst policies cannot access customer_data")
+
+        if grant.resource_key == "users_table" and has_write:
+            if not (is_admin or is_hr):
+                raise ValueError("only admin or HR policies can write users_table")
+
+        if grant.resource_key == "user_pool":
+            if not (is_admin or is_hr):
+                raise ValueError("only admin or HR policies can manage user_pool")
 
         if grant.resource_key == "policy_table" and (has_write or not is_admin):
             if not is_admin:

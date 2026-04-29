@@ -8,6 +8,7 @@ def build_session_policy(
     decision: AccessDecision,
     catalog: dict[str, Resource],
     *,
+    user_id: str | None = None,
     include_dynamodb_list_tables: bool = False,
     include_dynamodb_scan: bool = False,
 ) -> dict[str, Any]:
@@ -15,20 +16,30 @@ def build_session_policy(
     for grant in decision.grants:
         resource = catalog[grant.resource_key]
         actions = set(grant.actions)
-        if any(action.startswith("dynamodb:") for action in actions):
+        is_dynamodb = any(action.startswith("dynamodb:") for action in actions)
+        if is_dynamodb:
             actions.add("dynamodb:DescribeTable")
             if include_dynamodb_scan:
                 actions.add("dynamodb:Scan")
-        statements.append(
-            {
-                "Effect": "Allow",
-                "Action": sorted(actions),
-                "Resource": [
+        statement: dict[str, Any] = {
+            "Effect": "Allow",
+            "Action": sorted(actions),
+            "Resource": (
+                [
                     resource.table_arn,
                     f"{resource.table_arn}/index/*",
-                ],
+                ]
+                if is_dynamodb
+                else [resource.table_arn]
+            ),
+        }
+        if grant.resource_key == "account_data" and user_id:
+            statement["Condition"] = {
+                "ForAllValues:StringEquals": {
+                    "dynamodb:LeadingKeys": [user_id],
+                }
             }
-        )
+        statements.append(statement)
 
     if include_dynamodb_list_tables and statements:
         statements.append(

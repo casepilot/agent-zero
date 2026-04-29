@@ -19,6 +19,10 @@ def test_cognito_auth_resources_created():
         "AWS::Cognito::UserPoolGroup",
         {"GroupName": "employee"},
     )
+    template.has_resource_properties(
+        "AWS::Cognito::UserPoolGroup",
+        {"GroupName": "customer"},
+    )
 
 
 def test_ui_amplify_resources_created():
@@ -58,7 +62,7 @@ def test_dynamodb_user_and_policy_tables_created():
     stack = IamAgentStack(app, "iam-agent-data")
     template = assertions.Template.from_stack(stack)
 
-    template.resource_count_is("AWS::DynamoDB::Table", 5)
+    template.resource_count_is("AWS::DynamoDB::Table", 7)
     template.has_resource_properties(
         "AWS::DynamoDB::Table",
         {
@@ -107,6 +111,32 @@ def test_dynamodb_user_and_policy_tables_created():
     template.has_resource_properties(
         "AWS::DynamoDB::Table",
         {
+            "TableName": "transactions",
+            "KeySchema": [
+                {
+                    "AttributeName": "transaction_id",
+                    "KeyType": "HASH",
+                },
+            ],
+            "BillingMode": "PAY_PER_REQUEST",
+        },
+    )
+    template.has_resource_properties(
+        "AWS::DynamoDB::Table",
+        {
+            "TableName": "account_data",
+            "KeySchema": [
+                {
+                    "AttributeName": "user_id",
+                    "KeyType": "HASH",
+                },
+            ],
+            "BillingMode": "PAY_PER_REQUEST",
+        },
+    )
+    template.has_resource_properties(
+        "AWS::DynamoDB::Table",
+        {
             "TableName": "request_logs",
             "KeySchema": [
                 {
@@ -146,8 +176,11 @@ def test_agent_only_credentials_api_created():
                 "Variables": assertions.Match.object_like(
                     {
                         "OPENAI_SECRET_NAME": "openai-key",
+                        "USERS_TABLE_NAME": assertions.Match.any_value(),
                         "CUSTOMER_DATA_TABLE_NAME": assertions.Match.any_value(),
                         "ANALYTICS_DATA_TABLE_NAME": assertions.Match.any_value(),
+                        "TRANSACTIONS_TABLE_NAME": assertions.Match.any_value(),
+                        "ACCOUNT_DATA_TABLE_NAME": assertions.Match.any_value(),
                         "REQUEST_LOGS_TABLE_NAME": assertions.Match.any_value(),
                         "BROKER_CREDENTIALS_ROLE_ARN": assertions.Match.any_value(),
                     }
@@ -194,6 +227,12 @@ def test_agent_only_credentials_api_created():
                         "AGENT_REASONING_EFFORT": "medium",
                         "CREDENTIALS_URL": assertions.Match.any_value(),
                         "OPENAI_SECRET_NAME": "openai-key",
+                        "USERS_TABLE_NAME": assertions.Match.any_value(),
+                        "POLICY_TABLE_NAME": assertions.Match.any_value(),
+                        "CUSTOMER_DATA_TABLE_NAME": assertions.Match.any_value(),
+                        "ANALYTICS_DATA_TABLE_NAME": assertions.Match.any_value(),
+                        "TRANSACTIONS_TABLE_NAME": assertions.Match.any_value(),
+                        "ACCOUNT_DATA_TABLE_NAME": assertions.Match.any_value(),
                     }
                 ),
             },

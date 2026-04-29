@@ -57,6 +57,8 @@ class BrokerApi(Construct):
         policy_table,
         customer_data_table,
         analytics_data_table,
+        transactions_table,
+        account_data_table,
         request_logs_table,
         user_pool_client_id: str,
     ) -> None:
@@ -104,12 +106,19 @@ class BrokerApi(Construct):
             timeout=Duration.seconds(30),
             environment={
                 "USERS_TABLE_NAME": users_table.table_name,
+                "USERS_TABLE_ARN": users_table.table_arn,
+                "USER_POOL_ID": user_pool.user_pool_id,
+                "USER_POOL_ARN": user_pool.user_pool_arn,
                 "POLICY_TABLE_NAME": policy_table.table_name,
                 "POLICY_TABLE_ARN": policy_table.table_arn,
                 "CUSTOMER_DATA_TABLE_NAME": customer_data_table.table_name,
                 "CUSTOMER_DATA_TABLE_ARN": customer_data_table.table_arn,
                 "ANALYTICS_DATA_TABLE_NAME": analytics_data_table.table_name,
                 "ANALYTICS_DATA_TABLE_ARN": analytics_data_table.table_arn,
+                "TRANSACTIONS_TABLE_NAME": transactions_table.table_name,
+                "TRANSACTIONS_TABLE_ARN": transactions_table.table_arn,
+                "ACCOUNT_DATA_TABLE_NAME": account_data_table.table_name,
+                "ACCOUNT_DATA_TABLE_ARN": account_data_table.table_arn,
                 "REQUEST_LOGS_TABLE_NAME": request_logs_table.table_name,
                 "OPENAI_SECRET_NAME": "openai-key",
             },
@@ -125,13 +134,31 @@ class BrokerApi(Construct):
             iam.PolicyStatement(
                 actions=["dynamodb:*"],
                 resources=[
+                    users_table.table_arn,
+                    f"{users_table.table_arn}/index/*",
                     policy_table.table_arn,
                     f"{policy_table.table_arn}/index/*",
                     customer_data_table.table_arn,
                     f"{customer_data_table.table_arn}/index/*",
                     analytics_data_table.table_arn,
                     f"{analytics_data_table.table_arn}/index/*",
+                    transactions_table.table_arn,
+                    f"{transactions_table.table_arn}/index/*",
+                    account_data_table.table_arn,
+                    f"{account_data_table.table_arn}/index/*",
                 ],
+            )
+        )
+        self.broker_credentials_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "cognito-idp:AdminAddUserToGroup",
+                    "cognito-idp:AdminCreateUser",
+                    "cognito-idp:AdminGetUser",
+                    "cognito-idp:AdminSetUserPassword",
+                    "cognito-idp:AdminUpdateUserAttributes",
+                ],
+                resources=[user_pool.user_pool_arn],
             )
         )
         self.broker_credentials_role.add_to_policy(
@@ -203,8 +230,13 @@ class BrokerApi(Construct):
                 "AGENT_REASONING_EFFORT": "medium",
                 "CREDENTIALS_URL": self.api.url_for_path("/credentials"),
                 "OPENAI_SECRET_NAME": "openai-key",
+                "USER_POOL_ID": user_pool.user_pool_id,
+                "USERS_TABLE_NAME": users_table.table_name,
                 "POLICY_TABLE_NAME": policy_table.table_name,
-                "POLICY_TABLE_ARN": policy_table.table_arn,
+                "CUSTOMER_DATA_TABLE_NAME": customer_data_table.table_name,
+                "ANALYTICS_DATA_TABLE_NAME": analytics_data_table.table_name,
+                "TRANSACTIONS_TABLE_NAME": transactions_table.table_name,
+                "ACCOUNT_DATA_TABLE_NAME": account_data_table.table_name,
             },
         )
         openai_secret.grant_read(self.agent_worker_lambda)

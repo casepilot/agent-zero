@@ -2,7 +2,11 @@ from aws_cdk import CfnOutput, RemovalPolicy
 from aws_cdk import aws_cognito as cognito
 from constructs import Construct
 
-from iam_agent.config.resources import ADMIN_GROUP_NAME, EMPLOYEE_GROUP_NAME
+from iam_agent.config.resources import (
+    ADMIN_GROUP_NAME,
+    CUSTOMER_GROUP_NAME,
+    EMPLOYEE_GROUP_NAME,
+)
 
 
 class Auth(Construct):
@@ -59,6 +63,15 @@ class Auth(Construct):
             group_name=EMPLOYEE_GROUP_NAME,
             description="Employees can request temporary AWS access.",
             precedence=10,
+        )
+
+        self.customer_group = cognito.UserPoolGroup(
+            self,
+            "CustomerGroup",
+            user_pool=self.user_pool,
+            group_name=CUSTOMER_GROUP_NAME,
+            description="Customers can use the chat interface for self-service.",
+            precedence=20,
         )
 
         CfnOutput(

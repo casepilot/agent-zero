@@ -425,6 +425,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     session_policy = build_session_policy(
         decision,
         catalog,
+        user_id=user_id,
         include_dynamodb_list_tables=user_role == "employee",
         include_dynamodb_scan=bool_param(query.get("is_staff")),
     )

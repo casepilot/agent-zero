@@ -55,6 +55,30 @@ class Data(Construct):
             removal_policy=RemovalPolicy.DESTROY,
         )
 
+        self.transactions_table = dynamodb.Table(
+            self,
+            "TransactionsTable",
+            table_name="transactions",
+            partition_key=dynamodb.Attribute(
+                name="transaction_id",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.DESTROY,
+        )
+
+        self.account_data_table = dynamodb.Table(
+            self,
+            "AccountDataTable",
+            table_name="account_data",
+            partition_key=dynamodb.Attribute(
+                name="user_id",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.DESTROY,
+        )
+
         self.request_logs_table = dynamodb.Table(
             self,
             "RequestLogsTable",
@@ -86,6 +110,16 @@ class Data(Construct):
             self,
             "AnalyticsDataTableName",
             value=self.analytics_data_table.table_name,
+        )
+        CfnOutput(
+            self,
+            "TransactionsTableName",
+            value=self.transactions_table.table_name,
+        )
+        CfnOutput(
+            self,
+            "AccountDataTableName",
+            value=self.account_data_table.table_name,
         )
         CfnOutput(
             self,

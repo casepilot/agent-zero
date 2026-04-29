@@ -22,6 +22,8 @@ class IamAgentStack(Stack):
             policy_table=self.data.policy_table,
             customer_data_table=self.data.customer_data_table,
             analytics_data_table=self.data.analytics_data_table,
+            transactions_table=self.data.transactions_table,
+            account_data_table=self.data.account_data_table,
             request_logs_table=self.data.request_logs_table,
             user_pool_client_id=self.auth.user_pool_client.ref,
         )

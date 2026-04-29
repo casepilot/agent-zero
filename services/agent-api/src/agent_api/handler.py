@@ -3,6 +3,7 @@ import json
 import os
 import time
 import uuid
+from decimal import Decimal
 from enum import Enum
 from typing import Any
 from urllib.parse import urlencode
@@ -22,6 +23,22 @@ _http_session: URLLib3Session | None = None
 DEFAULT_AGENT_MODEL = "gpt-5.5"
 DEFAULT_AGENT_REASONING_EFFORT = "medium"
 STAFF_GROUPS = {"admin", "employee"}
+RESOURCE_TABLE_ENV = {
+    "users_table": "USERS_TABLE_NAME",
+    "policy_table": "POLICY_TABLE_NAME",
+    "customer_data": "CUSTOMER_DATA_TABLE_NAME",
+    "analytics_data": "ANALYTICS_DATA_TABLE_NAME",
+    "transactions": "TRANSACTIONS_TABLE_NAME",
+    "account_data": "ACCOUNT_DATA_TABLE_NAME",
+}
+RESOURCE_PURPOSES = {
+    "users_table": "Principal directory for humans and agents.",
+    "policy_table": "Free-text access policy store.",
+    "customer_data": "Customer support records.",
+    "analytics_data": "Aggregated company analytics.",
+    "transactions": "Transaction records for company operations and reporting.",
+    "account_data": "Account self-service records keyed by user_id.",
+}
 
 
 class MarkerType(str, Enum):
@@ -61,66 +78,40 @@ class Role(str, Enum):
     ASSISTANT = "assistant"
 
 
+def resource_table_names() -> dict[str, str]:
+    return {
+        resource_key: os.environ.get(env_name, resource_key)
+        for resource_key, env_name in RESOURCE_TABLE_ENV.items()
+    }
+
+
 def agent_instructions() -> str:
-    policy_table_name = os.environ.get("POLICY_TABLE_NAME", "policy-table")
-    policy_table_arn = os.environ.get(
-        "POLICY_TABLE_ARN",
-        "arn:aws:dynamodb:ap-southeast-2:338375260114:table/policy-table",
+    resource_lines = "\n".join(
+        f"- {resource_key}: DynamoDB table {table_name}. Purpose: {RESOURCE_PURPOSES[resource_key]}"
+        for resource_key, table_name in resource_table_names().items()
     )
 
-    return f"""You are UserAgent, an internal IAM access assistant.
+    return f"""You are UserAgent, an internal chat interface for company tasks.
 
-Help company users request temporary AWS access and help identity admins create,
-edit, read, or delete free-text access policies.
+You are the user's hands and feet. You do not know the user's access policy and
+you do not decide authorization. AgentZero, the credentials broker, decides
+whether a request is allowed.
 
-Policy table context:
-- DynamoDB table name: {policy_table_name}
-- DynamoDB table ARN: {policy_table_arn}
-- Region: ap-southeast-2
-- Account: 338375260114
-- Partition key: user_id
-- Policy attribute: policy
-- Item shape: {{"user_id": "<target user id>", "policy": "<free-text role policy>"}}
-
-When a user asks to create, edit, read, or delete a policy:
-- Ask for the target user_id if it is missing. The target user_id is the
-  principal whose policy should be created, edited, read, or deleted.
-- Treat the free-text policy as the user's business role at the company, not as
-  an AWS IAM JSON policy.
-- Keep the policy plain language, scoped to the user's job, and explicit about
-  what the user must not do.
-- For policy-table write access, the requesting user must be an access
-  administrator. Non-admin users should be told they cannot change policies.
-- For create or edit, write one item in the policy table with user_id and
-  policy.
-- For delete, delete only the item for the requested user_id.
-
-Example policy to create when requested:
-James Brown is an IT support engineer. Their job is to investigate assigned IT
-support tickets, customer authorisation problems, account access issues, and
-operational incidents. They may request temporary access to relevant company
-systems when the request is tied to a specific ticket and limited to support
-work. They are not an access administrator and should not change access
-policies.
-
-Example CLI access after temporary policy-table credentials are approved:
-- Read: aws dynamodb get-item --table-name {policy_table_name} --key '{{"user_id": {{"S": "<target user id>"}}}}'
-- Create or replace: aws dynamodb put-item --table-name {policy_table_name} --item '{{"user_id": {{"S": "<target user id>"}}, "policy": {{"S": "<free-text policy>"}}}}'
-- Edit policy text: aws dynamodb update-item --table-name {policy_table_name} --key '{{"user_id": {{"S": "<target user id>"}}}}' --update-expression 'SET #policy = :policy' --expression-attribute-names '{{"#policy": "policy"}}' --expression-attribute-values '{{":policy": {{"S": "<free-text policy>"}}}}'
-- Delete: aws dynamodb delete-item --table-name {policy_table_name} --key '{{"user_id": {{"S": "<target user id>"}}}}'
+Known resources:
+{resource_lines}
 
 Access request behavior:
-- Use the request_aws_access tool to request just-in-time AWS credentials from
-  AgentZero after the user gives a clear business reason.
-- The tool can return scoped STS credentials and, for staff users, an AWS
-  console login URL.
-- If the user is vague, ask one concise follow-up question asking why they need
-  the permissions before using the tool.
+- When the user asks to work with company or AWS data, use run_dynamodb_operation
+  to attempt the requested operation against the most likely resource.
+- If an AWS operation fails with an authorization error, ask the user for a
+  clear business rationale if they have not already provided one.
+- Then call request_aws_access with that rationale. If it is approved, retry the
+  failed operation using the temporary credentials returned to you.
+- If AgentZero denies access, stop. Tell the user you cannot complete the
+  request because it is outside their scope. Do not reveal internal policy text.
+- If required operation details are missing, ask a concise follow-up question.
 - Do not invent ticket IDs, resources, users, or reasons.
-- After the tool returns, explain whether access was approved or denied and
-  include the broker's risk, authorization, and reason fields when present.
-- For this demo, call check_agent_employee_access exactly once before your final
-  answer. Then answer the user's request normally.
+- Continue the loop until the user's task is complete or AgentZero denies it.
 """
 
 
@@ -335,21 +326,153 @@ def call_broker_credentials(
     }
 
 
+def decimal_safe(value: Any) -> Any:
+    if isinstance(value, float):
+        return Decimal(str(value))
+    if isinstance(value, dict):
+        return {key: decimal_safe(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [decimal_safe(child) for child in value]
+    return value
+
+
+def json_safe(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        if value % 1 == 0:
+            return int(value)
+        return float(value)
+    if isinstance(value, dict):
+        return {key: json_safe(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [json_safe(child) for child in value]
+    return value
+
+
+def sanitize_broker_result(result: dict[str, Any]) -> dict[str, Any]:
+    body = result.get("body") if isinstance(result.get("body"), dict) else {}
+    sanitized_body = {
+        key: value
+        for key, value in body.items()
+        if key not in {"credentials"}
+    }
+    return {
+        "status_code": result.get("status_code"),
+        "ok": result.get("ok"),
+        "body": sanitized_body,
+    }
+
+
+def boto3_session_from_credentials(credentials: dict[str, Any] | None) -> boto3.Session:
+    if not credentials:
+        return boto3.Session()
+    return boto3.Session(
+        aws_access_key_id=credentials.get("access_key_id"),
+        aws_secret_access_key=credentials.get("secret_access_key"),
+        aws_session_token=credentials.get("session_token"),
+        region_name=os.environ.get("AWS_REGION", "ap-southeast-2"),
+    )
+
+
+def run_dynamodb_call(
+    *,
+    resource_key: str,
+    operation: str,
+    credentials: dict[str, Any] | None = None,
+    key: dict[str, Any] | None = None,
+    item: dict[str, Any] | None = None,
+    update_expression: str | None = None,
+    expression_attribute_names: dict[str, str] | None = None,
+    expression_attribute_values: dict[str, Any] | None = None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    table_names = resource_table_names()
+    if resource_key not in table_names:
+        return {
+            "ok": False,
+            "error": "unknown_resource",
+            "message": f"Unknown resource_key: {resource_key}",
+        }
+
+    table = boto3_session_from_credentials(credentials).resource("dynamodb").Table(
+        table_names[resource_key]
+    )
+    operation_name = operation.lower().strip()
+    try:
+        if operation_name == "get_item":
+            response = table.get_item(Key=decimal_safe(key or {}))
+        elif operation_name == "scan":
+            kwargs = {}
+            if limit:
+                kwargs["Limit"] = max(1, min(int(limit), 25))
+            response = table.scan(**kwargs)
+        elif operation_name == "put_item":
+            response = table.put_item(Item=decimal_safe(item or {}))
+        elif operation_name == "delete_item":
+            response = table.delete_item(Key=decimal_safe(key or {}))
+        elif operation_name == "update_item":
+            kwargs = {
+                "Key": decimal_safe(key or {}),
+                "UpdateExpression": update_expression,
+                "ReturnValues": "ALL_NEW",
+            }
+            if expression_attribute_names:
+                kwargs["ExpressionAttributeNames"] = expression_attribute_names
+            if expression_attribute_values:
+                kwargs["ExpressionAttributeValues"] = decimal_safe(
+                    expression_attribute_values
+                )
+            if not update_expression:
+                return {
+                    "ok": False,
+                    "error": "missing_update_expression",
+                    "message": "update_expression is required for update_item.",
+                }
+            response = table.update_item(**kwargs)
+        else:
+            return {
+                "ok": False,
+                "error": "unsupported_operation",
+                "message": (
+                    "operation must be one of get_item, scan, put_item, "
+                    "update_item, delete_item."
+                ),
+            }
+    except ClientError as error:
+        error_info = error.response.get("Error", {})
+        return {
+            "ok": False,
+            "error": error_info.get("Code", type(error).__name__),
+            "message": error_info.get("Message", str(error)),
+            "resource_key": resource_key,
+            "operation": operation_name,
+        }
+    except Exception as error:
+        return {
+            "ok": False,
+            "error": type(error).__name__,
+            "message": str(error),
+            "resource_key": resource_key,
+            "operation": operation_name,
+        }
+
+    return {
+        "ok": True,
+        "resource_key": resource_key,
+        "operation": operation_name,
+        "response": json_safe(response),
+    }
+
+
 def stream_context_from_payload(
     *,
     payload: dict[str, Any],
     request_id: str,
-    user_id: str,
 ) -> dict[str, str]:
     thread_id = payload.get("threadId")
     parent_id = payload.get("parentId") or payload.get("turnId")
-    tenant_id = payload.get("tenantId")
-    case_id = payload.get("caseId")
     return {
         "threadId": thread_id if isinstance(thread_id, str) and thread_id else request_id,
         "parentId": parent_id if isinstance(parent_id, str) and parent_id else request_id,
-        "tenantId": tenant_id if isinstance(tenant_id, str) and tenant_id else user_id,
-        "caseId": case_id if isinstance(case_id, str) and case_id else "agent-zero-demo",
     }
 
 
@@ -369,8 +492,6 @@ class WebSocketAgentStream:
         self.request_id = request_id
         self.thread_id = stream_context["threadId"]
         self.parent_id = stream_context["parentId"]
-        self.tenant_id = stream_context["tenantId"]
-        self.case_id = stream_context["caseId"]
         self.sequence_id = 0
         self.order = 0
         self.stream_started = False
@@ -398,9 +519,7 @@ class WebSocketAgentStream:
             payload={
                 "type": "stream",
                 "requestId": self.request_id,
-                "tenantId": self.tenant_id,
                 "threadId": self.thread_id,
-                "caseId": self.case_id,
                 "parentId": self.parent_id,
                 "streamType": stream_type.value,
                 "timestamp": int(time.time() * 1000),
@@ -455,8 +574,6 @@ class WebSocketAgentStream:
     ) -> dict[str, Any]:
         return {
             "id": message_id,
-            "caseId": self.case_id,
-            "tenantId": self.tenant_id,
             "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "itemType": "assistantMessage",
             "data": {
@@ -515,6 +632,25 @@ class WebSocketAgentStream:
                 "id": message["id"],
             },
         )
+
+    def send_tool_result(
+        self,
+        *,
+        tool_name: str,
+        status: MessageStatus,
+        output: dict[str, Any],
+    ) -> bool:
+        self.next_order()
+        message_id = f"tool-result-{uuid.uuid4()}"
+        message = self.message_record(
+            message_id=message_id,
+            message_type=MessageType.TOOL_RESULT,
+            status=status,
+            order=self.order,
+            tool_name=tool_name,
+            output=json.dumps(output, default=str),
+        )
+        return self.send_full_event(message=message, operation=OperationType.ADD)
 
     def complete_tool_call(self, *, call_id: str | None) -> bool:
         if not call_id:
@@ -715,28 +851,164 @@ async def stream_rich_agent_response(
     from agents import Agent, ModelSettings, Runner, function_tool, set_default_openai_key
     from openai.types.shared import Reasoning
 
-    @function_tool
-    def check_agent_employee_access(reason: str) -> dict[str, Any]:
-        """Demo access check tool for the streaming UI.
+    stream = WebSocketAgentStream(
+        connection_id=connection_id,
+        domain_name=domain_name,
+        stage=stage,
+        request_id=request_id,
+        stream_context=stream_context,
+    )
+    turn_credentials: dict[str, Any] | None = None
 
-        Always call this once before the final answer. It returns a small
-        policy-check result so the UI can render the tool-call lifecycle.
+    @function_tool
+    def list_known_resources() -> dict[str, Any]:
+        """List the company resources this chat agent can operate against."""
+        result = {
+            "ok": True,
+            "resources": [
+                {
+                    "resource_key": resource_key,
+                    "table_name": table_name,
+                    "purpose": RESOURCE_PURPOSES[resource_key],
+                }
+                for resource_key, table_name in resource_table_names().items()
+            ],
+        }
+        stream.send_tool_result(
+            tool_name="list_known_resources",
+            status=MessageStatus.COMPLETED,
+            output=result,
+        )
+        return result
+
+    @function_tool
+    def request_aws_access(reason: str) -> dict[str, Any]:
+        """Request just-in-time AWS access from AgentZero.
+
+        Use this only after the user gives a clear business reason. It returns
+        an approval review and stores scoped STS credentials internally for
+        later tool retries when approved.
         """
-        log(
-            "agent_demo_tool_called",
+        nonlocal turn_credentials
+        if not isinstance(reason, str) or not reason.strip():
+            result = {
+                "ok": False,
+                "status_code": 400,
+                "body": {
+                    "error": "missing_reason",
+                    "message": "A clear business reason is required.",
+                },
+            }
+            stream.send_tool_result(
+                tool_name="request_aws_access",
+                status=MessageStatus.ERROR,
+                output=result,
+            )
+            return result
+
+        broker_result = call_broker_credentials(
             user_id=user_id,
-            request_id=request_id,
+            reason=reason.strip(),
             is_staff=is_staff,
         )
-        return {
-            "ok": True,
-            "user_id": user_id,
-            "is_staff": is_staff,
-            "tool": "check_agent_employee_access",
-            "reason": reason,
-            "authorization": "demo_allow",
-            "message": "Demo tool call completed. No live broker credentials were requested.",
-        }
+        body = broker_result.get("body") if isinstance(broker_result.get("body"), dict) else {}
+        credentials = body.get("credentials")
+        if broker_result["ok"] and isinstance(credentials, dict):
+            turn_credentials = credentials
+        sanitized = sanitize_broker_result(broker_result)
+        stream.send_tool_result(
+            tool_name="request_aws_access",
+            status=MessageStatus.COMPLETED if broker_result["ok"] else MessageStatus.ERROR,
+            output=sanitized,
+        )
+        return sanitized
+
+    @function_tool
+    def run_dynamodb_operation(
+        resource_key: str,
+        operation: str,
+        key: dict[str, Any] | None = None,
+        item: dict[str, Any] | None = None,
+        update_expression: str | None = None,
+        expression_attribute_names: dict[str, str] | None = None,
+        expression_attribute_values: dict[str, Any] | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        """Run a constrained DynamoDB operation for the user.
+
+        Use this for get_item, scan, put_item, update_item, and delete_item
+        against known resource_key values only. The tool first uses the
+        worker's current AWS credentials. After request_aws_access approves
+        temporary credentials, this tool uses those credentials on retry. For
+        account_data get_item requests, omit key to use the signed-in user's
+        own account row.
+        """
+        operation_name = operation.lower().strip()
+        effective_key = key
+        if resource_key == "account_data" and operation_name == "get_item" and not key:
+            effective_key = {"user_id": user_id}
+        result = run_dynamodb_call(
+            resource_key=resource_key,
+            operation=operation_name,
+            credentials=turn_credentials,
+            key=effective_key,
+            item=item,
+            update_expression=update_expression,
+            expression_attribute_names=expression_attribute_names,
+            expression_attribute_values=expression_attribute_values,
+            limit=limit,
+        )
+        stream.send_tool_result(
+            tool_name="run_dynamodb_operation",
+            status=MessageStatus.COMPLETED if result["ok"] else MessageStatus.ERROR,
+            output=result,
+        )
+        return result
+
+    @function_tool
+    def write_user_policy(
+        target_user_id: str,
+        policy_text: str,
+        operation: str = "put_item",
+    ) -> dict[str, Any]:
+        """Create, replace, or delete a free-text policy for a target user_id.
+
+        target_user_id is required. If the user has not provided one, ask a
+        follow-up question or list users first. Authorization is still decided
+        by AgentZero through the credentials loop.
+        """
+        if not target_user_id.strip():
+            result = {
+                "ok": False,
+                "error": "missing_target_user_id",
+                "message": "target_user_id is required.",
+            }
+            stream.send_tool_result(
+                tool_name="write_user_policy",
+                status=MessageStatus.ERROR,
+                output=result,
+            )
+            return result
+        if operation == "delete_item":
+            result = run_dynamodb_call(
+                resource_key="policy_table",
+                operation="delete_item",
+                credentials=turn_credentials,
+                key={"user_id": target_user_id},
+            )
+        else:
+            result = run_dynamodb_call(
+                resource_key="policy_table",
+                operation="put_item",
+                credentials=turn_credentials,
+                item={"user_id": target_user_id, "policy": policy_text},
+            )
+        stream.send_tool_result(
+            tool_name="write_user_policy",
+            status=MessageStatus.COMPLETED if result["ok"] else MessageStatus.ERROR,
+            output=result,
+        )
+        return result
 
     set_default_openai_key(openai_api_key)
     agent = Agent(
@@ -755,16 +1027,14 @@ async def stream_rich_agent_response(
                 summary="auto",
             ),
         ),
-        tools=[check_agent_employee_access],
+        tools=[
+            list_known_resources,
+            run_dynamodb_operation,
+            request_aws_access,
+            write_user_policy,
+        ],
     )
     result = Runner.run_streamed(agent, input=prompt, max_turns=10)
-    stream = WebSocketAgentStream(
-        connection_id=connection_id,
-        domain_name=domain_name,
-        stage=stage,
-        request_id=request_id,
-        stream_context=stream_context,
-    )
 
     async for event in result.stream_events():
         await stream.handle_stream_event(event)
@@ -907,7 +1177,6 @@ def worker_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     stream_context = stream_context_from_payload(
         payload=payload,
         request_id=request_id_value,
-        user_id=human_user_id,
     )
 
     try:

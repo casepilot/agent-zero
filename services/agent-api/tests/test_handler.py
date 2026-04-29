@@ -5,24 +5,19 @@ from types import SimpleNamespace
 from agent_api import handler
 
 
-def test_agent_instructions_include_policy_table_context(monkeypatch):
+def test_agent_instructions_keep_authorization_in_broker(monkeypatch):
     monkeypatch.setenv("POLICY_TABLE_NAME", "policy-table")
-    monkeypatch.setenv(
-        "POLICY_TABLE_ARN",
-        "arn:aws:dynamodb:ap-southeast-2:338375260114:table/policy-table",
-    )
+    monkeypatch.setenv("TRANSACTIONS_TABLE_NAME", "transactions")
 
     instructions = handler.agent_instructions()
 
-    assert "DynamoDB table name: policy-table" in instructions
-    assert (
-        "arn:aws:dynamodb:ap-southeast-2:338375260114:table/policy-table"
-        in instructions
-    )
-    assert "Ask for the target user_id if it is missing" in instructions
-    assert "James Brown is an IT support engineer" in instructions
-    assert "aws dynamodb put-item --table-name policy-table" in instructions
-    assert '"user_id": {"S": "<target user id>"}' in instructions
+    assert "policy_table: DynamoDB table policy-table" in instructions
+    assert "transactions: DynamoDB table transactions" in instructions
+    assert "you do not decide authorization" in instructions
+    assert "credentials broker, decides" in instructions
+    assert "James Brown is an IT support engineer" not in instructions
+    assert "administrator" not in instructions.lower()
+    assert "analyst" not in instructions.lower()
 
 
 class FakeLambdaClient:
@@ -154,8 +149,6 @@ def test_stream_manager_maps_reasoning_tool_and_answer_events(monkeypatch):
         stream_context={
             "threadId": "thread-1",
             "parentId": "turn-1",
-            "tenantId": "tenant-1",
-            "caseId": "case-1",
         },
     )
 
@@ -179,7 +172,7 @@ def test_stream_manager_maps_reasoning_tool_and_answer_events(monkeypatch):
 
     class ResponseFunctionToolCall:
         id = "tool-1"
-        name = "check_agent_employee_access"
+        name = "run_dynamodb_operation"
         arguments = '{"reason":"demo"}'
         call_id = "call-1"
 
@@ -265,8 +258,10 @@ def test_stream_manager_maps_reasoning_tool_and_answer_events(monkeypatch):
         if message["streamType"] == "completed_message"
     ]
     assert completed_events[0]["data"][0]["message"]["data"]["tool_name"] == (
-        "check_agent_employee_access"
+        "run_dynamodb_operation"
     )
+    assert "tenantId" not in completed_events[0]["data"][0]["message"]
+    assert "caseId" not in completed_events[0]["data"][0]["message"]
     assert [message["sequenceId"] for message in sent_messages] == list(
         range(1, len(sent_messages) + 1)
     )
@@ -356,3 +351,91 @@ def test_call_broker_credentials_uses_expected_query(monkeypatch):
     assert "is_staff=true" in captured["url"]
     assert "reason=Support+ticket+IT-123" in captured["url"]
     assert "resource=" not in captured["url"]
+
+
+def test_sanitize_broker_result_removes_raw_credentials():
+    result = handler.sanitize_broker_result(
+        {
+            "status_code": 200,
+            "ok": True,
+            "body": {
+                "decision": {"risk": "low", "authorization": "high"},
+                "console_login_url": "https://signin.aws.amazon.com/federation",
+                "credentials": {
+                    "access_key_id": "AKIA",
+                    "secret_access_key": "secret",
+                    "session_token": "token",
+                },
+            },
+        }
+    )
+
+    assert result["body"]["decision"]["risk"] == "low"
+    assert "console_login_url" in result["body"]
+    assert "credentials" not in result["body"]
+
+
+def test_stream_manager_can_send_tool_result(monkeypatch):
+    sent_messages = []
+    monkeypatch.setattr(
+        handler,
+        "send_ws_message",
+        lambda **kwargs: sent_messages.append(kwargs["payload"]) or True,
+    )
+    stream = handler.WebSocketAgentStream(
+        connection_id="conn-1",
+        domain_name="example.execute-api.ap-southeast-2.amazonaws.com",
+        stage="prod",
+        request_id="req-1",
+        stream_context={"threadId": "thread-1", "parentId": "turn-1"},
+    )
+
+    stream.send_tool_result(
+        tool_name="run_dynamodb_operation",
+        status=handler.MessageStatus.ERROR,
+        output={"ok": False, "error": "AccessDeniedException"},
+    )
+
+    message = sent_messages[0]["data"][0]["message"]
+    assert sent_messages[0]["streamType"] == "completed_message"
+    assert message["data"]["type"] == "tool_result"
+    assert message["data"]["status"] == "error"
+    assert message["data"]["tool_name"] == "run_dynamodb_operation"
+    assert "AccessDeniedException" in message["data"]["output"]
+
+
+def test_run_dynamodb_call_returns_access_denied(monkeypatch):
+    from botocore.exceptions import ClientError
+
+    class FakeTable:
+        def scan(self, **kwargs):
+            raise ClientError(
+                {
+                    "Error": {
+                        "Code": "AccessDeniedException",
+                        "Message": "not authorized",
+                    }
+                },
+                "Scan",
+            )
+
+    class FakeResource:
+        def Table(self, name):
+            assert name == "customer_data"
+            return FakeTable()
+
+    class FakeSession:
+        def resource(self, service_name):
+            assert service_name == "dynamodb"
+            return FakeResource()
+
+    monkeypatch.setenv("CUSTOMER_DATA_TABLE_NAME", "customer_data")
+    monkeypatch.setattr(handler, "boto3_session_from_credentials", lambda creds: FakeSession())
+
+    result = handler.run_dynamodb_call(
+        resource_key="customer_data",
+        operation="scan",
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "AccessDeniedException"
