@@ -335,67 +335,372 @@ def call_broker_credentials(
     }
 
 
-async def stream_friendly_agent_response(
+def stream_context_from_payload(
+    *,
+    payload: dict[str, Any],
+    request_id: str,
+    user_id: str,
+) -> dict[str, str]:
+    thread_id = payload.get("threadId")
+    parent_id = payload.get("parentId") or payload.get("turnId")
+    tenant_id = payload.get("tenantId")
+    case_id = payload.get("caseId")
+    return {
+        "threadId": thread_id if isinstance(thread_id, str) and thread_id else request_id,
+        "parentId": parent_id if isinstance(parent_id, str) and parent_id else request_id,
+        "tenantId": tenant_id if isinstance(tenant_id, str) and tenant_id else user_id,
+        "caseId": case_id if isinstance(case_id, str) and case_id else "agent-zero-demo",
+    }
+
+
+class WebSocketAgentStream:
+    def __init__(
+        self,
+        *,
+        connection_id: str,
+        domain_name: str,
+        stage: str,
+        request_id: str,
+        stream_context: dict[str, str],
+    ) -> None:
+        self.connection_id = connection_id
+        self.domain_name = domain_name
+        self.stage = stage
+        self.request_id = request_id
+        self.thread_id = stream_context["threadId"]
+        self.parent_id = stream_context["parentId"]
+        self.tenant_id = stream_context["tenantId"]
+        self.case_id = stream_context["caseId"]
+        self.sequence_id = 0
+        self.order = 0
+        self.stream_started = False
+        self.reasoning_active = False
+        self.final_message_id: str | None = None
+        self.final_answer_content = ""
+        self.final_answer_started = False
+        self.tool_call_ids_by_call_id: dict[str, str] = {}
+
+    def next_sequence_id(self) -> int:
+        self.sequence_id += 1
+        return self.sequence_id
+
+    def next_order(self) -> int:
+        self.order += 1
+        return self.order
+
+    def send_stream(self, stream_type: StreamMessageType, data: Any) -> bool:
+        if isinstance(data, dict):
+            data = [data]
+        return send_ws_message(
+            connection_id=self.connection_id,
+            domain_name=self.domain_name,
+            stage=self.stage,
+            payload={
+                "type": "stream",
+                "requestId": self.request_id,
+                "tenantId": self.tenant_id,
+                "threadId": self.thread_id,
+                "caseId": self.case_id,
+                "parentId": self.parent_id,
+                "streamType": stream_type.value,
+                "timestamp": int(time.time() * 1000),
+                "sequenceId": self.next_sequence_id(),
+                "data": data,
+            },
+        )
+
+    def send_message_marker(self, marker: MarkerType) -> bool:
+        return self.send_stream(
+            StreamMessageType.MESSAGE_MARKER,
+            {"marker": marker.value},
+        )
+
+    def send_delta_event(
+        self,
+        *,
+        message_id: str,
+        message_type: MessageType,
+        operation: OperationType,
+        status: MessageStatus,
+        content: str | None = None,
+        role: Role | None = None,
+    ) -> bool:
+        payload = {
+            "type": message_type.value,
+            "operation": operation.value,
+            "id": message_id,
+            "order": self.order,
+            "status": status.value,
+            "content": content,
+        }
+        if role is not None:
+            payload["role"] = role.value
+        return self.send_stream(StreamMessageType.DELTA_MSG, payload)
+
+    def message_record(
+        self,
+        *,
+        message_id: str,
+        message_type: MessageType,
+        status: MessageStatus,
+        group_id: str | None = None,
+        order: int | None = None,
+        role: Role | None = None,
+        content: str | None = None,
+        summary: list[str] | None = None,
+        arguments: str | None = None,
+        tool_name: str | None = None,
+        call_id: str | None = None,
+        output: str | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "id": message_id,
+            "caseId": self.case_id,
+            "tenantId": self.tenant_id,
+            "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "itemType": "assistantMessage",
+            "data": {
+                "threadId": self.thread_id,
+                "groupId": group_id or self.parent_id,
+                "parentId": self.parent_id,
+                "order": order if order is not None else self.order,
+                "type": message_type.value,
+                "role": role.value if role is not None else None,
+                "status": status.value,
+                "summary": summary,
+                "arguments": arguments,
+                "tool_name": tool_name,
+                "call_id": call_id,
+                "output": output,
+                "content": content,
+                "thoughtFor": 0 if message_type == MessageType.ASSISTANT_MESSAGE else None,
+                "taggedEvidence": [],
+                "annotations": [],
+            },
+        }
+
+    def send_delta_completed_event(
+        self,
+        *,
+        message: dict[str, Any],
+        message_type: MessageType,
+    ) -> bool:
+        return self.send_stream(
+            StreamMessageType.DELTA_MSG,
+            [
+                {
+                    "operation": OperationType.PATCH.value,
+                    "message": message,
+                },
+                {
+                    "operation": None,
+                    "id": message["id"],
+                    "type": message_type.value,
+                    "status": MessageStatus.COMPLETED.value,
+                },
+            ],
+        )
+
+    def send_full_event(
+        self,
+        *,
+        message: dict[str, Any],
+        operation: OperationType,
+    ) -> bool:
+        return self.send_stream(
+            StreamMessageType.COMPLETED_MSG,
+            {
+                "message": message,
+                "operation": operation.value,
+                "id": message["id"],
+            },
+        )
+
+    def complete_tool_call(self, *, call_id: str | None) -> bool:
+        if not call_id:
+            return True
+        message_id = self.tool_call_ids_by_call_id.get(call_id)
+        if not message_id:
+            return True
+        return self.send_delta_event(
+            message_id=message_id,
+            message_type=MessageType.TOOL_CALL,
+            operation=OperationType.REPLACE,
+            status=MessageStatus.COMPLETED,
+        )
+
+    async def handle_stream_event(self, event: Any) -> None:
+        event_type = getattr(event, "type", None)
+        if event_type == "agent_updated_stream_event":
+            if not self.stream_started:
+                self.stream_started = True
+                self.send_message_marker(MarkerType.COT)
+            return
+
+        if event_type == "run_item_stream_event":
+            item = getattr(event, "item", None)
+            raw_item = getattr(item, "raw_item", None)
+            if getattr(event, "name", None) == "message_output_created" and raw_item is not None:
+                self.final_message_id = getattr(raw_item, "id", None) or str(uuid.uuid4())
+            if item is not None and item.__class__.__name__ == "ToolCallOutputItem":
+                if isinstance(raw_item, dict):
+                    call_id = raw_item.get("call_id")
+                else:
+                    call_id = getattr(raw_item, "call_id", None)
+                self.complete_tool_call(call_id=call_id)
+            return
+
+        if event_type != "raw_response_event":
+            return
+
+        data = getattr(event, "data", None)
+        data_type = data.__class__.__name__
+
+        if data_type == "ResponseReasoningSummaryPartAddedEvent":
+            self.reasoning_active = True
+            self.next_order()
+            self.send_delta_event(
+                message_id=getattr(data, "item_id", str(uuid.uuid4())),
+                message_type=MessageType.REASONING,
+                operation=OperationType.ADD,
+                status=MessageStatus.IN_PROGRESS,
+            )
+            return
+
+        if data_type == "ResponseReasoningSummaryTextDeltaEvent":
+            self.send_delta_event(
+                message_id=getattr(data, "item_id", str(uuid.uuid4())),
+                message_type=MessageType.REASONING,
+                operation=OperationType.APPEND,
+                status=MessageStatus.IN_PROGRESS,
+                content=getattr(data, "delta", ""),
+            )
+            return
+
+        item = getattr(data, "item", None)
+        item_type = item.__class__.__name__ if item is not None else ""
+
+        if data_type == "ResponseOutputItemDoneEvent" and item_type == "ResponseReasoningItem" and self.reasoning_active:
+            self.reasoning_active = False
+            summary = []
+            for part in getattr(item, "summary", []) or []:
+                text = getattr(part, "text", None)
+                if text:
+                    summary.append(text)
+            message = self.message_record(
+                message_id=getattr(item, "id", str(uuid.uuid4())),
+                message_type=MessageType.REASONING,
+                status=MessageStatus.COMPLETED,
+                summary=summary,
+            )
+            self.send_delta_completed_event(
+                message=message,
+                message_type=MessageType.REASONING,
+            )
+            return
+
+        if data_type == "ResponseOutputItemDoneEvent" and item_type == "ResponseFunctionToolCall":
+            self.next_order()
+            message_id = getattr(item, "id", str(uuid.uuid4()))
+            call_id = getattr(item, "call_id", None)
+            if call_id:
+                self.tool_call_ids_by_call_id[call_id] = message_id
+            message = self.message_record(
+                message_id=message_id,
+                message_type=MessageType.TOOL_CALL,
+                status=MessageStatus.IN_PROGRESS,
+                arguments=getattr(item, "arguments", None),
+                tool_name=getattr(item, "name", None),
+                call_id=call_id,
+            )
+            self.send_full_event(message=message, operation=OperationType.ADD)
+            return
+
+        if data_type == "ResponseOutputItemAddedEvent" and item_type == "ResponseOutputMessage":
+            self.final_message_id = getattr(item, "id", None) or self.final_message_id
+            self.send_message_marker(MarkerType.GENERATING_SUMMARY)
+            return
+
+        delta = getattr(data, "delta", None)
+        if data_type == "ResponseTextDeltaEvent" and isinstance(delta, str) and delta:
+            self.final_answer_content += delta
+            if self.final_message_id is None:
+                self.final_message_id = getattr(data, "item_id", None) or str(uuid.uuid4())
+            if not self.final_answer_started:
+                self.final_answer_started = True
+                self.next_order()
+                self.send_message_marker(MarkerType.USER_VISIBLE_TOKEN)
+                self.send_delta_event(
+                    message_id=self.final_message_id,
+                    message_type=MessageType.ASSISTANT_MESSAGE,
+                    operation=OperationType.ADD,
+                    status=MessageStatus.IN_PROGRESS,
+                    content=delta,
+                    role=Role.ASSISTANT,
+                )
+            else:
+                self.send_delta_event(
+                    message_id=self.final_message_id,
+                    message_type=MessageType.ASSISTANT_MESSAGE,
+                    operation=OperationType.APPEND,
+                    status=MessageStatus.IN_PROGRESS,
+                    content=delta,
+                    role=Role.ASSISTANT,
+                )
+
+    def finish(self) -> None:
+        if self.final_message_id:
+            message = self.message_record(
+                message_id=self.final_message_id,
+                message_type=MessageType.ASSISTANT_MESSAGE,
+                status=MessageStatus.COMPLETED,
+                role=Role.ASSISTANT,
+                content=self.final_answer_content,
+            )
+            self.send_delta_completed_event(
+                message=message,
+                message_type=MessageType.ASSISTANT_MESSAGE,
+            )
+        self.send_message_marker(MarkerType.END_TURN)
+
+
+async def stream_rich_agent_response(
     *,
     connection_id: str,
     domain_name: str,
     stage: str,
-    request_id: str | None,
+    request_id: str,
+    stream_context: dict[str, str],
     prompt: str,
     openai_api_key: str,
     user_id: str,
     is_staff: bool,
 ) -> None:
     from agents import Agent, ModelSettings, Runner, function_tool, set_default_openai_key
+    from openai.types.shared import Reasoning
 
     @function_tool
-    def request_aws_access(reason: str) -> dict[str, Any]:
-        """Request just-in-time AWS access from AgentZero.
+    def check_agent_employee_access(reason: str) -> dict[str, Any]:
+        """Demo access check tool for the streaming UI.
 
-        Use this only after the user gives a clear business reason. It returns
-        scoped STS credentials and, for staff users, an AWS console login URL.
+        Always call this once before the final answer. It returns a small
+        policy-check result so the UI can render the tool-call lifecycle.
         """
-        if not isinstance(reason, str) or not reason.strip():
-            return {
-                "status_code": 400,
-                "ok": False,
-                "body": {
-                    "error": "missing_reason",
-                    "message": "A clear business reason is required.",
-                },
-            }
-
         log(
-            "agent_broker_tool_started",
+            "agent_demo_tool_called",
             user_id=user_id,
             request_id=request_id,
             is_staff=is_staff,
-            reason_length=len(reason.strip()),
         )
-        broker_result = call_broker_credentials(
-            user_id=user_id,
-            reason=reason.strip(),
-            is_staff=is_staff,
-        )
-        log(
-            "agent_broker_tool_completed",
-            user_id=user_id,
-            request_id=request_id,
-            status_code=broker_result["status_code"],
-            ok=broker_result["ok"],
-            broker_error=broker_result["body"].get("error"),
-        )
-        send_ws_message(
-            connection_id=connection_id,
-            domain_name=domain_name,
-            stage=stage,
-            payload={
-                "type": "broker_result",
-                "requestId": request_id,
-                "result": broker_result,
-            },
-        )
-        return broker_result
+        return {
+            "ok": True,
+            "user_id": user_id,
+            "is_staff": is_staff,
+            "tool": "check_agent_employee_access",
+            "reason": reason,
+            "authorization": "demo_allow",
+            "message": "Demo tool call completed. No live broker credentials were requested.",
+        }
 
     set_default_openai_key(openai_api_key)
     agent = Agent(
@@ -403,34 +708,31 @@ async def stream_friendly_agent_response(
         instructions=agent_instructions(),
         model=os.environ.get("AGENT_MODEL", DEFAULT_AGENT_MODEL),
         model_settings=ModelSettings(
-            reasoning={
-                "effort": os.environ.get(
+            store=False,
+            response_include=["reasoning.encrypted_content"],
+            parallel_tool_calls=True,
+            reasoning=Reasoning(
+                effort=os.environ.get(
                     "AGENT_REASONING_EFFORT",
                     DEFAULT_AGENT_REASONING_EFFORT,
-                )
-            },
+                ),
+                summary="auto",
+            ),
         ),
-        tools=[request_aws_access],
+        tools=[check_agent_employee_access],
     )
-    result = Runner.run_streamed(agent, input=prompt)
+    result = Runner.run_streamed(agent, input=prompt, max_turns=10)
+    stream = WebSocketAgentStream(
+        connection_id=connection_id,
+        domain_name=domain_name,
+        stage=stage,
+        request_id=request_id,
+        stream_context=stream_context,
+    )
 
     async for event in result.stream_events():
-        if getattr(event, "type", None) != "raw_response_event":
-            continue
-
-        data = getattr(event, "data", None)
-        delta = getattr(data, "delta", None)
-        if not isinstance(delta, str) or not delta:
-            continue
-
-        if not stream_text(
-            connection_id=connection_id,
-            domain_name=domain_name,
-            stage=stage,
-            request_id=request_id,
-            text=delta,
-        ):
-            break
+        await stream.handle_stream_event(event)
+    stream.finish()
 
 
 def invoke_worker(
@@ -566,6 +868,11 @@ def worker_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         return {"statusCode": 400}
     prompt = prompt_from_payload(payload)
     assert prompt is not None
+    stream_context = stream_context_from_payload(
+        payload=payload,
+        request_id=request_id_value,
+        user_id=human_user_id,
+    )
 
     try:
         openai_api_key = get_openai_key()
@@ -591,11 +898,12 @@ def worker_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     try:
         asyncio.run(
-            stream_friendly_agent_response(
+            stream_rich_agent_response(
                 connection_id=connection_id,
                 domain_name=domain_name,
                 stage=stage,
                 request_id=request_id_value,
+                stream_context=stream_context,
                 prompt=prompt,
                 openai_api_key=openai_api_key,
                 user_id=human_user_id,
