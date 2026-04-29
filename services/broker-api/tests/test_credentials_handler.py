@@ -41,6 +41,7 @@ def test_handler_returns_403_when_policy_missing(monkeypatch):
 
 def test_handler_returns_credentials_and_console_url_for_staff(monkeypatch):
     monkeypatch.setattr(credentials, "load_policy", lambda user_id: "Admin is admin.")
+    monkeypatch.setattr(credentials, "load_user_role", lambda user_id: "admin")
     monkeypatch.setattr(credentials, "get_openai_key", lambda: "sk-test")
     monkeypatch.setattr(credentials, "get_resource_catalog", lambda: {})
     monkeypatch.setattr(
@@ -63,7 +64,7 @@ def test_handler_returns_credentials_and_console_url_for_staff(monkeypatch):
     monkeypatch.setattr(
         credentials,
         "build_session_policy",
-        lambda decision, catalog: {"Version": "2012-10-17", "Statement": []},
+        lambda decision, catalog, **kwargs: {"Version": "2012-10-17", "Statement": []},
     )
     monkeypatch.setattr(
         credentials,
