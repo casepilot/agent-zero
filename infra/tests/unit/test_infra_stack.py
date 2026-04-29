@@ -87,15 +87,45 @@ def test_agent_only_credentials_api_created():
     template.has_resource_properties(
         "AWS::Lambda::Function",
         {
+            "FunctionName": "AgentZero",
             "Handler": "broker_api.handlers.credentials.handler",
-            "ReservedConcurrentExecutions": 1,
+            "Environment": {
+                "Variables": assertions.Match.object_like(
+                    {"OPENAI_SECRET_NAME": "openai-key"}
+                ),
+            },
         },
     )
     template.has_resource_properties(
         "AWS::Lambda::Function",
         {
+            "FunctionName": "UserAgent",
             "Handler": "agent_api.handler.handler",
-            "ReservedConcurrentExecutions": 1,
+            "Environment": {
+                "Variables": assertions.Match.object_like(
+                    {"OPENAI_SECRET_NAME": "openai-key"}
+                ),
+            },
+        },
+    )
+    template.has_resource_properties(
+        "AWS::IAM::Policy",
+        {
+            "PolicyDocument": {
+                "Statement": assertions.Match.array_with(
+                    [
+                        assertions.Match.object_like(
+                            {
+                                "Action": [
+                                    "secretsmanager:GetSecretValue",
+                                    "secretsmanager:DescribeSecret",
+                                ],
+                                "Effect": "Allow",
+                            }
+                        )
+                    ]
+                ),
+            },
         },
     )
     template.has_resource_properties(

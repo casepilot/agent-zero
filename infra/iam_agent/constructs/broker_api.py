@@ -4,6 +4,7 @@ from aws_cdk import Aws, CfnOutput, Duration
 from aws_cdk import aws_apigateway as apigateway
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as lambda_
+from aws_cdk import aws_secretsmanager as secretsmanager
 from constructs import Construct
 
 
@@ -22,23 +23,31 @@ class BrokerApi(Construct):
         repo_root = Path(__file__).resolve().parents[3]
         broker_code_path = repo_root / "services" / "broker-api" / "src"
         agent_code_path = repo_root / "services" / "agent-api" / "src"
+        openai_secret = secretsmanager.Secret.from_secret_name_v2(
+            self,
+            "OpenAiSecret",
+            "openai-key",
+        )
 
+        # AgentZero is the IAM agent. It owns broker-side credential decisions.
         self.broker_lambda = lambda_.Function(
             self,
             "BrokerLambda",
+            function_name="AgentZero",
             runtime=lambda_.Runtime.PYTHON_3_11,
             handler="broker_api.handlers.credentials.handler",
             code=lambda_.Code.from_asset(str(broker_code_path)),
             timeout=Duration.seconds(10),
-            reserved_concurrent_executions=1,
             environment={
                 "USERS_TABLE_NAME": users_table.table_name,
                 "POLICY_TABLE_NAME": policy_table.table_name,
+                "OPENAI_SECRET_NAME": "openai-key",
             },
         )
 
         users_table.grant_read_data(self.broker_lambda)
         policy_table.grant_read_data(self.broker_lambda)
+        openai_secret.grant_read(self.broker_lambda)
 
         self.api = apigateway.RestApi(
             self,
@@ -65,18 +74,21 @@ class BrokerApi(Construct):
             f"{Aws.REGION}.{Aws.URL_SUFFIX}/prod/credentials"
         )
 
+        # UserAgent is the agent that users interact with.
         self.agent_lambda = lambda_.Function(
             self,
             "AgentLambda",
+            function_name="UserAgent",
             runtime=lambda_.Runtime.PYTHON_3_11,
             handler="agent_api.handler.handler",
             code=lambda_.Code.from_asset(str(agent_code_path)),
             timeout=Duration.seconds(15),
-            reserved_concurrent_executions=1,
             environment={
                 "CREDENTIALS_URL": credentials_url,
+                "OPENAI_SECRET_NAME": "openai-key",
             },
         )
+        openai_secret.grant_read(self.agent_lambda)
 
         agent_resource = self.api.root.add_resource("agent")
         agent_resource.add_method(
