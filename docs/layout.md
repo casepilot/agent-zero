@@ -116,8 +116,8 @@ Current state:
 - Nuxt 4 app using pnpm.
 - Tailwind CSS and shadcn-vue are configured.
 - `app/app/pages/index.vue` redirects to `/home`.
-- `app/app/pages/login.vue` is a static login screen that routes through `/` on submit.
-- `app/app/pages/home.vue` is the post-login landing page.
+- `app/app/pages/login.vue` is a static login screen that routes to `/home` on submit.
+- `app/app/pages/home.vue` is the desktop chat interface with local simulated streaming.
 - `app/app/components/ui/` contains shadcn-style button, input, and label components.
 - `app/app/lib/utils.ts` contains the shared `cn()` class helper.
 

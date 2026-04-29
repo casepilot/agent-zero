@@ -9,7 +9,7 @@ const password = ref('')
 const showPassword = ref(false)
 
 async function handleContinue() {
-  await navigateTo('/')
+  await navigateTo('/home')
 }
 </script>
 
