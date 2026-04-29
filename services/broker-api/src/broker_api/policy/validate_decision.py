@@ -22,10 +22,10 @@ COGNITO_USER_ADMIN_ACTIONS = {
 ALLOWED_ACTIONS_BY_RESOURCE = {
     "users_table": READ_ACTIONS | WRITE_ACTIONS,
     "user_pool": COGNITO_USER_ADMIN_ACTIONS,
-    "customer_data": READ_ACTIONS | WRITE_ACTIONS,
-    "analytics_data": READ_ACTIONS,
-    "transactions": READ_ACTIONS,
-    "account_data": READ_ACTIONS | WRITE_ACTIONS,
+    "bank_customer_profiles": READ_ACTIONS | WRITE_ACTIONS,
+    "bank_operational_metrics": READ_ACTIONS,
+    "bank_transactions": READ_ACTIONS,
+    "bank_balances": READ_ACTIONS | WRITE_ACTIONS,
     "policy_table": READ_ACTIONS | WRITE_ACTIONS,
 }
 
@@ -65,13 +65,13 @@ def validate_decision(
 
         has_write = bool(set(grant.actions) & WRITE_ACTIONS)
 
-        if grant.resource_key == "analytics_data":
+        if grant.resource_key == "bank_operational_metrics":
             if looks_like_customer:
-                raise ValueError("end customers cannot access analytics_data")
+                raise ValueError("end customers cannot access bank_operational_metrics")
 
-        if grant.resource_key == "customer_data":
+        if grant.resource_key == "bank_customer_profiles":
             if is_analyst and not is_admin:
-                raise ValueError("analyst policies cannot access customer_data")
+                raise ValueError("analyst policies cannot access bank_customer_profiles")
 
         if grant.resource_key == "users_table" and has_write:
             if not (is_admin or is_hr):

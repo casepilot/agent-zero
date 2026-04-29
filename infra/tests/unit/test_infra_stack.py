@@ -85,7 +85,7 @@ def test_dynamodb_user_and_policy_tables_created():
     template.has_resource_properties(
         "AWS::DynamoDB::Table",
         {
-            "TableName": "customer_data",
+            "TableName": "bank_customer_profiles",
             "KeySchema": [
                 {
                     "AttributeName": "customer_id",
@@ -98,7 +98,7 @@ def test_dynamodb_user_and_policy_tables_created():
     template.has_resource_properties(
         "AWS::DynamoDB::Table",
         {
-            "TableName": "analytics_data",
+            "TableName": "bank_operational_metrics",
             "KeySchema": [
                 {
                     "AttributeName": "metric_id",
@@ -111,11 +111,15 @@ def test_dynamodb_user_and_policy_tables_created():
     template.has_resource_properties(
         "AWS::DynamoDB::Table",
         {
-            "TableName": "transactions",
+            "TableName": "bank_transactions",
             "KeySchema": [
                 {
-                    "AttributeName": "transaction_id",
+                    "AttributeName": "user_id",
                     "KeyType": "HASH",
+                },
+                {
+                    "AttributeName": "transaction_id",
+                    "KeyType": "RANGE",
                 },
             ],
             "BillingMode": "PAY_PER_REQUEST",
@@ -124,7 +128,7 @@ def test_dynamodb_user_and_policy_tables_created():
     template.has_resource_properties(
         "AWS::DynamoDB::Table",
         {
-            "TableName": "account_data",
+            "TableName": "bank_balances",
             "KeySchema": [
                 {
                     "AttributeName": "user_id",
@@ -167,6 +171,14 @@ def test_agent_only_credentials_api_created():
     template.resource_count_is("AWS::ApiGatewayV2::Stage", 1)
     template.resource_count_is("AWS::ApiGatewayV2::Authorizer", 1)
     template.resource_count_is("AWS::Lambda::Function", 4)
+    template.resource_properties_count_is(
+        "AWS::Lambda::Function",
+        {
+            "MemorySize": 1024,
+            "Timeout": 900,
+        },
+        4,
+    )
     template.has_resource_properties(
         "AWS::Lambda::Function",
         {
@@ -177,10 +189,12 @@ def test_agent_only_credentials_api_created():
                     {
                         "OPENAI_SECRET_NAME": "openai-key",
                         "USERS_TABLE_NAME": assertions.Match.any_value(),
-                        "CUSTOMER_DATA_TABLE_NAME": assertions.Match.any_value(),
-                        "ANALYTICS_DATA_TABLE_NAME": assertions.Match.any_value(),
-                        "TRANSACTIONS_TABLE_NAME": assertions.Match.any_value(),
-                        "ACCOUNT_DATA_TABLE_NAME": assertions.Match.any_value(),
+                        "USER_POOL_ID": assertions.Match.any_value(),
+                        "USER_POOL_ARN": assertions.Match.any_value(),
+                        "BANK_CUSTOMER_PROFILES_TABLE_NAME": assertions.Match.any_value(),
+                        "BANK_OPERATIONAL_METRICS_TABLE_NAME": assertions.Match.any_value(),
+                        "BANK_TRANSACTIONS_TABLE_NAME": assertions.Match.any_value(),
+                        "BANK_BALANCES_TABLE_NAME": assertions.Match.any_value(),
                         "REQUEST_LOGS_TABLE_NAME": assertions.Match.any_value(),
                         "BROKER_CREDENTIALS_ROLE_ARN": assertions.Match.any_value(),
                     }
@@ -227,12 +241,13 @@ def test_agent_only_credentials_api_created():
                         "AGENT_REASONING_EFFORT": "medium",
                         "CREDENTIALS_URL": assertions.Match.any_value(),
                         "OPENAI_SECRET_NAME": "openai-key",
+                        "USER_POOL_ID": assertions.Match.any_value(),
                         "USERS_TABLE_NAME": assertions.Match.any_value(),
                         "POLICY_TABLE_NAME": assertions.Match.any_value(),
-                        "CUSTOMER_DATA_TABLE_NAME": assertions.Match.any_value(),
-                        "ANALYTICS_DATA_TABLE_NAME": assertions.Match.any_value(),
-                        "TRANSACTIONS_TABLE_NAME": assertions.Match.any_value(),
-                        "ACCOUNT_DATA_TABLE_NAME": assertions.Match.any_value(),
+                        "BANK_CUSTOMER_PROFILES_TABLE_NAME": assertions.Match.any_value(),
+                        "BANK_OPERATIONAL_METRICS_TABLE_NAME": assertions.Match.any_value(),
+                        "BANK_TRANSACTIONS_TABLE_NAME": assertions.Match.any_value(),
+                        "BANK_BALANCES_TABLE_NAME": assertions.Match.any_value(),
                     }
                 ),
             },
@@ -251,6 +266,29 @@ def test_agent_only_credentials_api_created():
                                     "secretsmanager:DescribeSecret",
                                 ],
                                 "Effect": "Allow",
+                            }
+                        )
+                    ]
+                ),
+            },
+        },
+    )
+    template.has_resource_properties(
+        "AWS::IAM::Policy",
+        {
+            "PolicyDocument": {
+                "Statement": assertions.Match.array_with(
+                    [
+                        assertions.Match.object_like(
+                            {
+                                "Action": assertions.Match.array_with(
+                                    [
+                                        "cognito-idp:AdminCreateUser",
+                                        "cognito-idp:AdminSetUserPassword",
+                                    ]
+                                ),
+                                "Effect": "Allow",
+                                "Resource": assertions.Match.any_value(),
                             }
                         )
                     ]

@@ -6,10 +6,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 ResourceKey = Literal[
     "users_table",
     "user_pool",
-    "customer_data",
-    "analytics_data",
-    "transactions",
-    "account_data",
+    "bank_customer_profiles",
+    "bank_operational_metrics",
+    "bank_transactions",
+    "bank_balances",
     "policy_table",
 ]
 AwsAction = Literal[

@@ -251,8 +251,8 @@ Current constructs:
 - `data.py` creates five DynamoDB tables:
   - `users-table`
   - `policy-table`
-  - `customer_data`
-  - `analytics_data`
+  - `bank_customer_profiles`
+  - `bank_operational_metrics`
   - `request_logs`
 - `broker_api.py` creates:
   - the broad broker credentials role used with scoped STS session policies
@@ -339,7 +339,7 @@ Current state:
 - Loads the principal profile from `users-table`.
 - Loads a principal policy from `policy-table`.
 - Loads the OpenAI key from Secrets Manager.
-- Builds a resource catalog for `customer_data`, `analytics_data`, and
+- Builds a resource catalog for `bank_customer_profiles`, `bank_operational_metrics`, and
   `policy_table`.
 - Calls an OpenAI reviewer for a structured access decision.
 - Validates decisions with deterministic allowlists, deny rules, and schema
@@ -373,7 +373,7 @@ Local helper scripts.
 Current scripts:
 
 - `bootstrap_demo_users.py` bootstraps demo Cognito users, the demo agent
-  record, demo policies, `customer_data` rows, and `analytics_data` rows. It
+  record, demo policies, `bank_customer_profiles` rows, and `bank_operational_metrics` rows. It
   also supports a dry-run teardown by default.
 - `deploy_frontend.sh` runs the single-stack CDK deploy for the frontend hosting
   path.

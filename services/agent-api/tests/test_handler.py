@@ -7,12 +7,14 @@ from agent_api import handler
 
 def test_agent_instructions_keep_authorization_in_broker(monkeypatch):
     monkeypatch.setenv("POLICY_TABLE_NAME", "policy-table")
-    monkeypatch.setenv("TRANSACTIONS_TABLE_NAME", "transactions")
+    monkeypatch.setenv("BANK_TRANSACTIONS_TABLE_NAME", "bank_transactions")
 
     instructions = handler.agent_instructions()
 
     assert "policy_table: DynamoDB table policy-table" in instructions
-    assert "transactions: DynamoDB table transactions" in instructions
+    assert "bank_transactions: DynamoDB table bank_transactions" in instructions
+    assert "user_pool: Cognito user pool" in instructions
+    assert "create_cognito_user" in instructions
     assert "you do not decide authorization" in instructions
     assert "credentials broker, decides" in instructions
     assert "James Brown is an IT support engineer" not in instructions
@@ -317,6 +319,74 @@ def test_worker_returns_error_when_request_id_missing(monkeypatch):
     assert sent_messages[1]["missing"] == ["requestId"]
 
 
+def test_worker_returns_visible_error_when_it_crashes(monkeypatch):
+    sent_messages = []
+
+    def crash(*args, **kwargs):
+        raise RuntimeError("boom from worker")
+
+    monkeypatch.setattr(handler, "_worker_handler_inner", crash)
+    monkeypatch.setattr(
+        handler,
+        "send_ws_message",
+        lambda **kwargs: sent_messages.append(kwargs["payload"]) or True,
+    )
+
+    result = handler.worker_handler(
+        {
+            "connection_id": "conn-1",
+            "domain_name": "example.execute-api.ap-southeast-2.amazonaws.com",
+            "stage": "prod",
+            "user_id": "trusted-cognito-sub",
+            "payload": {"requestId": "req-1", "message": "hello"},
+        },
+        SimpleNamespace(aws_request_id="aws-1"),
+    )
+
+    assert result["statusCode"] == 500
+    assert sent_messages == [
+        {
+            "type": "error",
+            "requestId": "req-1",
+            "error": "worker_crashed",
+            "message": "An error occurred in the Agent Lambda.",
+            "details": "RuntimeError: boom from worker",
+        }
+    ]
+
+
+def test_route_handler_sends_visible_error_when_worker_invoke_fails(monkeypatch):
+    sent_messages = []
+    monkeypatch.setattr(
+        handler,
+        "invoke_worker",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("invoke failed")),
+    )
+    monkeypatch.setattr(
+        handler,
+        "send_ws_message",
+        lambda **kwargs: sent_messages.append(kwargs["payload"]) or True,
+    )
+
+    result = handler.route_handler(
+        {
+            "body": json.dumps({"requestId": "req-1", "message": "hello"}),
+            "requestContext": {
+                "routeKey": "requestAccess",
+                "connectionId": "conn-1",
+                "domainName": "example.execute-api.ap-southeast-2.amazonaws.com",
+                "stage": "prod",
+                "authorizer": {"user_id": "trusted-cognito-sub"},
+            },
+        },
+        SimpleNamespace(aws_request_id="aws-1"),
+    )
+
+    assert result["statusCode"] == 500
+    assert sent_messages[0]["error"] == "route_handler_failed"
+    assert sent_messages[0]["details"] == "RuntimeError: invoke failed"
+
+
 def test_staff_status_comes_from_cognito_groups():
     assert handler.is_staff_from_groups({"employee"}) is True
     assert handler.is_staff_from_groups({"admin"}) is True
@@ -349,7 +419,7 @@ def test_call_broker_credentials_uses_expected_query(monkeypatch):
     }
     assert "user_id=trusted-cognito-sub" in captured["url"]
     assert "is_staff=true" in captured["url"]
-    assert "reason=Support+ticket+IT-123" in captured["url"]
+    assert "reason=Support%20ticket%20IT-123" in captured["url"]
     assert "resource=" not in captured["url"]
 
 
@@ -421,7 +491,7 @@ def test_run_dynamodb_call_returns_access_denied(monkeypatch):
 
     class FakeResource:
         def Table(self, name):
-            assert name == "customer_data"
+            assert name == "bank_customer_profiles"
             return FakeTable()
 
     class FakeSession:
@@ -429,13 +499,88 @@ def test_run_dynamodb_call_returns_access_denied(monkeypatch):
             assert service_name == "dynamodb"
             return FakeResource()
 
-    monkeypatch.setenv("CUSTOMER_DATA_TABLE_NAME", "customer_data")
+    monkeypatch.setenv("BANK_CUSTOMER_PROFILES_TABLE_NAME", "bank_customer_profiles")
     monkeypatch.setattr(handler, "boto3_session_from_credentials", lambda creds: FakeSession())
 
     result = handler.run_dynamodb_call(
-        resource_key="customer_data",
+        resource_key="bank_customer_profiles",
         operation="scan",
     )
 
     assert result["ok"] is False
     assert result["error"] == "AccessDeniedException"
+
+
+def test_create_cognito_user_record_creates_cognito_and_users_table(monkeypatch):
+    calls = []
+    monkeypatch.setenv("USER_POOL_ID", "pool-1")
+    monkeypatch.setenv("USERS_TABLE_NAME", "users-table")
+
+    class FakeCognito:
+        def admin_create_user(self, **kwargs):
+            calls.append(("admin_create_user", kwargs))
+
+        def admin_update_user_attributes(self, **kwargs):
+            calls.append(("admin_update_user_attributes", kwargs))
+
+        def admin_set_user_password(self, **kwargs):
+            calls.append(("admin_set_user_password", kwargs))
+
+        def admin_add_user_to_group(self, **kwargs):
+            calls.append(("admin_add_user_to_group", kwargs))
+
+        def admin_get_user(self, **kwargs):
+            calls.append(("admin_get_user", kwargs))
+            return {"UserAttributes": [{"Name": "sub", "Value": "sub-123"}]}
+
+    class FakeTable:
+        def put_item(self, **kwargs):
+            calls.append(("put_item", kwargs))
+
+    class FakeDynamo:
+        def Table(self, table_name):
+            assert table_name == "users-table"
+            return FakeTable()
+
+    class FakeSession:
+        def client(self, service_name):
+            assert service_name == "cognito-idp"
+            return FakeCognito()
+
+        def resource(self, service_name):
+            assert service_name == "dynamodb"
+            return FakeDynamo()
+
+    monkeypatch.setattr(handler, "boto3_session_from_credentials", lambda creds: FakeSession())
+
+    result = handler.create_cognito_user_record(
+        email="New.User@Example.com",
+        password="Hackathon123!",
+        name="New User",
+        group="employee",
+        role="employee",
+        is_human=True,
+        credentials={"access_key_id": "AKIA"},
+    )
+
+    assert result["ok"] is True
+    assert result["user_id"] == "sub-123"
+    assert result["username"] == "new.user@example.com"
+    assert "admin_set_user_password" in [call[0] for call in calls]
+    put_item_calls = [call for call in calls if call[0] == "put_item"]
+    assert put_item_calls[0][1]["Item"]["user_id"] == "sub-123"
+    assert put_item_calls[0][1]["Item"]["role"] == "employee"
+
+
+def test_create_cognito_user_record_rejects_unknown_group():
+    result = handler.create_cognito_user_record(
+        email="user@example.com",
+        password="Hackathon123!",
+        name=None,
+        group="owner",
+        role=None,
+        is_human=True,
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "invalid_group"

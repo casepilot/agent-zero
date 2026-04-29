@@ -19,9 +19,13 @@ ADMIN_POLICY = (
     "Admin User is an administrator. They may read and write policy-table "
     "for policy management work."
 )
+HR_POLICY = (
+    "Helen works in human resources. They create employee accounts and maintain "
+    "basic user records for onboarding."
+)
 
 
-def test_support_can_get_customer_data_read_access():
+def test_support_can_get_bank_customer_profiles_read_access():
     decision = AccessDecision(
         approved=True,
         reason="Support case is specific and allowed.",
@@ -30,7 +34,7 @@ def test_support_can_get_customer_data_read_access():
         duration_seconds=900,
         grants=[
             {
-                "resource_key": "customer_data",
+                "resource_key": "bank_customer_profiles",
                 "actions": ["dynamodb:GetItem", "dynamodb:Query"],
             }
         ],
@@ -45,17 +49,17 @@ def test_support_can_get_customer_data_read_access():
     assert validated is decision
 
 
-def test_external_customer_cannot_get_analytics_data():
+def test_external_customer_cannot_get_bank_operational_metrics():
     decision = AccessDecision(
         approved=True,
         reason="Customer wants analytics.",
         risk="high",
         authorization="low",
         duration_seconds=900,
-        grants=[{"resource_key": "analytics_data", "actions": ["dynamodb:Scan"]}],
+        grants=[{"resource_key": "bank_operational_metrics", "actions": ["dynamodb:Scan"]}],
     )
 
-    with pytest.raises(ValueError, match="analytics_data"):
+    with pytest.raises(ValueError, match="bank_operational_metrics"):
         validate_decision(
             decision=decision,
             policy_text="Riley is an external customer using the customer portal.",
@@ -63,17 +67,17 @@ def test_external_customer_cannot_get_analytics_data():
         )
 
 
-def test_analyst_cannot_get_general_customer_data():
+def test_analyst_cannot_get_general_bank_customer_profiles():
     decision = AccessDecision(
         approved=True,
         reason="Analyst wants customer data.",
         risk="high",
         authorization="low",
         duration_seconds=900,
-        grants=[{"resource_key": "customer_data", "actions": ["dynamodb:Scan"]}],
+        grants=[{"resource_key": "bank_customer_profiles", "actions": ["dynamodb:Scan"]}],
     )
 
-    with pytest.raises(ValueError, match="customer_data"):
+    with pytest.raises(ValueError, match="bank_customer_profiles"):
         validate_decision(
             decision=decision,
             policy_text=ANALYST_POLICY,
@@ -120,14 +124,14 @@ def test_admin_can_write_policy_table():
     )
 
 
-def test_transactions_read_access_is_valid():
+def test_bank_transactions_read_access_is_valid():
     decision = AccessDecision(
         approved=True,
         reason="Transaction reporting request.",
         risk="medium",
         authorization="high",
         duration_seconds=900,
-        grants=[{"resource_key": "transactions", "actions": ["dynamodb:Scan"]}],
+        grants=[{"resource_key": "bank_transactions", "actions": ["dynamodb:Scan"]}],
     )
 
     validated = validate_decision(
@@ -139,7 +143,7 @@ def test_transactions_read_access_is_valid():
     assert validated is decision
 
 
-def test_users_table_is_read_only():
+def test_non_admin_or_hr_cannot_write_users_table():
     decision = AccessDecision(
         approved=True,
         reason="Policy admin wants to edit the user directory.",
@@ -152,8 +156,61 @@ def test_users_table_is_read_only():
     with pytest.raises(ValueError, match="users_table"):
         validate_decision(
             decision=decision,
-            policy_text=ADMIN_POLICY,
+            policy_text=SUPPORT_POLICY,
             reason="Update a user directory row.",
+        )
+
+
+def test_hr_can_create_cognito_user_and_users_table_row():
+    decision = AccessDecision(
+        approved=True,
+        reason="HR onboarding request.",
+        risk="medium",
+        authorization="high",
+        duration_seconds=900,
+        grants=[
+            {
+                "resource_key": "user_pool",
+                "actions": [
+                    "cognito-idp:AdminCreateUser",
+                    "cognito-idp:AdminSetUserPassword",
+                    "cognito-idp:AdminAddUserToGroup",
+                    "cognito-idp:AdminGetUser",
+                ],
+            },
+            {"resource_key": "users_table", "actions": ["dynamodb:PutItem"]},
+        ],
+    )
+
+    validated = validate_decision(
+        decision=decision,
+        policy_text=HR_POLICY,
+        reason="Create a user account for new hire onboarding.",
+    )
+
+    assert validated is decision
+
+
+def test_non_admin_or_hr_cannot_manage_user_pool():
+    decision = AccessDecision(
+        approved=True,
+        reason="Support wants to create a user.",
+        risk="high",
+        authorization="low",
+        duration_seconds=900,
+        grants=[
+            {
+                "resource_key": "user_pool",
+                "actions": ["cognito-idp:AdminCreateUser"],
+            }
+        ],
+    )
+
+    with pytest.raises(ValueError, match="user_pool"):
+        validate_decision(
+            decision=decision,
+            policy_text=SUPPORT_POLICY,
+            reason="Create a user account.",
         )
 
 
@@ -171,10 +228,10 @@ def test_schema_rejects_unknown_resource_and_excess_duration():
 
 def test_session_policy_uses_exact_catalog_arns():
     catalog = {
-        "customer_data": Resource(
-            key="customer_data",
-            table_name="customer_data",
-            table_arn="arn:aws:dynamodb:ap-southeast-2:123:table/customer_data",
+        "bank_customer_profiles": Resource(
+            key="bank_customer_profiles",
+            table_name="bank_customer_profiles",
+            table_arn="arn:aws:dynamodb:ap-southeast-2:123:table/bank_customer_profiles",
             purpose="customer data",
         )
     }
@@ -184,7 +241,7 @@ def test_session_policy_uses_exact_catalog_arns():
         risk="medium",
         authorization="high",
         duration_seconds=900,
-        grants=[{"resource_key": "customer_data", "actions": ["dynamodb:GetItem"]}],
+        grants=[{"resource_key": "bank_customer_profiles", "actions": ["dynamodb:GetItem"]}],
     )
 
     policy = build_session_policy(decision, catalog)
@@ -194,8 +251,8 @@ def test_session_policy_uses_exact_catalog_arns():
             "Effect": "Allow",
             "Action": ["dynamodb:DescribeTable", "dynamodb:GetItem"],
             "Resource": [
-                "arn:aws:dynamodb:ap-southeast-2:123:table/customer_data",
-                "arn:aws:dynamodb:ap-southeast-2:123:table/customer_data/index/*",
+                "arn:aws:dynamodb:ap-southeast-2:123:table/bank_customer_profiles",
+                "arn:aws:dynamodb:ap-southeast-2:123:table/bank_customer_profiles/index/*",
             ],
         }
     ]
@@ -203,10 +260,10 @@ def test_session_policy_uses_exact_catalog_arns():
 
 def test_session_policy_can_add_list_tables_for_employee_console_demo():
     catalog = {
-        "customer_data": Resource(
-            key="customer_data",
-            table_name="customer_data",
-            table_arn="arn:aws:dynamodb:ap-southeast-2:123:table/customer_data",
+        "bank_customer_profiles": Resource(
+            key="bank_customer_profiles",
+            table_name="bank_customer_profiles",
+            table_arn="arn:aws:dynamodb:ap-southeast-2:123:table/bank_customer_profiles",
             purpose="customer data",
         )
     }
@@ -216,7 +273,7 @@ def test_session_policy_can_add_list_tables_for_employee_console_demo():
         risk="medium",
         authorization="high",
         duration_seconds=900,
-        grants=[{"resource_key": "customer_data", "actions": ["dynamodb:GetItem"]}],
+        grants=[{"resource_key": "bank_customer_profiles", "actions": ["dynamodb:GetItem"]}],
     )
 
     policy = build_session_policy(
@@ -234,10 +291,10 @@ def test_session_policy_can_add_list_tables_for_employee_console_demo():
 
 def test_session_policy_can_add_scan_for_staff_console_demo():
     catalog = {
-        "customer_data": Resource(
-            key="customer_data",
-            table_name="customer_data",
-            table_arn="arn:aws:dynamodb:ap-southeast-2:123:table/customer_data",
+        "bank_customer_profiles": Resource(
+            key="bank_customer_profiles",
+            table_name="bank_customer_profiles",
+            table_arn="arn:aws:dynamodb:ap-southeast-2:123:table/bank_customer_profiles",
             purpose="customer data",
         )
     }
@@ -247,7 +304,7 @@ def test_session_policy_can_add_scan_for_staff_console_demo():
         risk="medium",
         authorization="high",
         duration_seconds=900,
-        grants=[{"resource_key": "customer_data", "actions": ["dynamodb:GetItem"]}],
+        grants=[{"resource_key": "bank_customer_profiles", "actions": ["dynamodb:GetItem"]}],
     )
 
     policy = build_session_policy(decision, catalog, include_dynamodb_scan=True)
@@ -259,12 +316,12 @@ def test_session_policy_can_add_scan_for_staff_console_demo():
     ]
 
 
-def test_account_data_session_policy_scopes_leading_key_to_user():
+def test_bank_balances_session_policy_scopes_leading_key_to_user():
     catalog = {
-        "account_data": Resource(
-            key="account_data",
-            table_name="account_data",
-            table_arn="arn:aws:dynamodb:ap-southeast-2:123:table/account_data",
+        "bank_balances": Resource(
+            key="bank_balances",
+            table_name="bank_balances",
+            table_arn="arn:aws:dynamodb:ap-southeast-2:123:table/bank_balances",
             purpose="account data",
         )
     }
@@ -274,7 +331,7 @@ def test_account_data_session_policy_scopes_leading_key_to_user():
         risk="low",
         authorization="high",
         duration_seconds=900,
-        grants=[{"resource_key": "account_data", "actions": ["dynamodb:GetItem"]}],
+        grants=[{"resource_key": "bank_balances", "actions": ["dynamodb:GetItem"]}],
     )
 
     policy = build_session_policy(decision, catalog, user_id="user-123")
@@ -283,4 +340,36 @@ def test_account_data_session_policy_scopes_leading_key_to_user():
         "ForAllValues:StringEquals": {
             "dynamodb:LeadingKeys": ["user-123"],
         }
+    }
+
+
+def test_cognito_session_policy_uses_user_pool_arn_only():
+    catalog = {
+        "user_pool": Resource(
+            key="user_pool",
+            table_name="ap-southeast-2_pool",
+            table_arn="arn:aws:cognito-idp:ap-southeast-2:123:userpool/pool",
+            purpose="user pool",
+        )
+    }
+    decision = AccessDecision(
+        approved=True,
+        reason="Create user.",
+        risk="medium",
+        authorization="high",
+        duration_seconds=900,
+        grants=[
+            {
+                "resource_key": "user_pool",
+                "actions": ["cognito-idp:AdminCreateUser"],
+            }
+        ],
+    )
+
+    policy = build_session_policy(decision, catalog)
+
+    assert policy["Statement"][0] == {
+        "Effect": "Allow",
+        "Action": ["cognito-idp:AdminCreateUser"],
+        "Resource": ["arn:aws:cognito-idp:ap-southeast-2:123:userpool/pool"],
     }

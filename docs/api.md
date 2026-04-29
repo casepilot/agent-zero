@@ -88,6 +88,7 @@ Sent when the turn cannot continue.
   "requestId": "turn-uuid",
   "error": "invalid_request",
   "message": "Missing required field(s): requestId.",
+  "details": "ValueError: exact backend error when available",
   "missing": ["requestId"]
 }
 ```
@@ -97,6 +98,14 @@ Known errors:
 - `invalid_request`
 - `openai_secret_check_failed`
 - `agent_stream_failed`
+- `route_handler_failed`
+- `worker_crashed`
+
+For runtime failures after the WebSocket connection is established, the backend
+tries to include `details` with the exact Python exception type and message so
+the frontend can display useful debug output during the hackathon. Lambda import
+or init failures can still only show up as a failed connect/invoke plus
+CloudWatch logs, because handler code has not started yet.
 
 ### `done`
 
@@ -366,6 +375,7 @@ list_known_resources
 run_dynamodb_operation
 request_aws_access
 write_user_policy
+create_cognito_user
 ```
 
 Tool outputs are streamed as `tool_result` messages. AWS errors such as

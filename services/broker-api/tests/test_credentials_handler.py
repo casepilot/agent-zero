@@ -19,7 +19,7 @@ def _event(query):
 
 def test_handler_rejects_resource_param():
     result = credentials.handler(
-        _event({"user_id": "u1", "reason": "support", "resource": "customer_data"}),
+        _event({"user_id": "u1", "reason": "support", "resource": "bank_customer_profiles"}),
         SimpleNamespace(aws_request_id="aws-1"),
     )
 

@@ -27,8 +27,8 @@
 25. [x] Add Amplify hosting infrastructure for `app/`.
 26. [x] Remove the separate support agent UI.
 27. [ ] Connect the Nuxt chat flow to the customer support LLM agent. Agent API now has rich WebSocket streaming for OpenAI Agents SDK turns, including markers, reasoning summaries, tool calls, tool results, final answer deltas, and end-turn events.
-28. [ ] Add demo data for customers, flights, bookings, and sensitive internal records. customer_data, analytics_data, transactions, and account_data are bootstrapped; flights, bookings, and sensitive internal records remain.
-29. [ ] Add scripts for seeding demo data and printing deployed stack outputs. Demo user bootstrap now seeds and tears down users, policies, customer_data, analytics_data, transactions, and account_data.
+28. [ ] Add demo data for customers, flights, bookings, and sensitive internal records. bank_customer_profiles, bank_operational_metrics, bank_transactions, and bank_balances are bootstrapped; flights, bookings, and sensitive internal records remain.
+29. [ ] Add scripts for seeding demo data and printing deployed stack outputs. Demo user bootstrap now seeds and tears down users, policies, bank_customer_profiles, bank_operational_metrics, bank_transactions, and bank_balances.
 30. [ ] Write docs for architecture, API usage, threat model, and the hackathon demo script. Agent WebSocket streaming contract is documented in `docs/api.md`.
 31. [ ] Run an end-to-end demo path for human approval, agent approval, and agent denial.
 32. [x] Add local automation to refresh `docs/layout.md` with Codex every 30 minutes and run git stage, commit, and pull every 5 minutes.

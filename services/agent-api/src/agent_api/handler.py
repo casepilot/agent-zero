@@ -6,9 +6,10 @@ import uuid
 from decimal import Decimal
 from enum import Enum
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import boto3
+from boto3.dynamodb.conditions import Key
 from botocore.auth import SigV4Auth
 from botocore.awsrequest import AWSRequest
 from botocore.exceptions import ClientError
@@ -26,20 +27,20 @@ STAFF_GROUPS = {"admin", "employee"}
 RESOURCE_TABLE_ENV = {
     "users_table": "USERS_TABLE_NAME",
     "policy_table": "POLICY_TABLE_NAME",
-    "customer_data": "CUSTOMER_DATA_TABLE_NAME",
-    "analytics_data": "ANALYTICS_DATA_TABLE_NAME",
-    "transactions": "TRANSACTIONS_TABLE_NAME",
-    "account_data": "ACCOUNT_DATA_TABLE_NAME",
+    "bank_customer_profiles": "BANK_CUSTOMER_PROFILES_TABLE_NAME",
+    "bank_operational_metrics": "BANK_OPERATIONAL_METRICS_TABLE_NAME",
+    "bank_transactions": "BANK_TRANSACTIONS_TABLE_NAME",
+    "bank_balances": "BANK_BALANCES_TABLE_NAME",
 }
 KNOWN_COGNITO_GROUPS = {"admin", "employee", "customer"}
 RESOURCE_PURPOSES = {
     "users_table": "Principal directory for humans and agents.",
     "user_pool": "Cognito user pool for application users and groups.",
     "policy_table": "Free-text access policy store.",
-    "customer_data": "Customer support records.",
-    "analytics_data": "Aggregated company analytics.",
-    "transactions": "Transaction records for company operations and reporting.",
-    "account_data": "Account self-service records keyed by user_id.",
+    "bank_customer_profiles": "Sensitive bank customer profile, KYC, contact, and support records.",
+    "bank_operational_metrics": "Aggregated bank operational, fraud, liquidity, and portfolio metrics.",
+    "bank_transactions": "Card, transfer, deposit, and withdrawal transaction ledger records.",
+    "bank_balances": "Retail banking balance and account summary rows keyed by user_id.",
 }
 
 
@@ -273,6 +274,62 @@ def send_ws_message(
         raise
 
 
+def crash_details(error: Exception) -> str:
+    return f"{type(error).__name__}: {error}"
+
+
+def send_ws_error(
+    *,
+    connection_id: str,
+    domain_name: str,
+    stage: str,
+    request_id: str | None,
+    error_code: str,
+    details: str,
+    message: str = "An error occurred in the Agent Lambda.",
+    extra: dict[str, Any] | None = None,
+) -> bool:
+    payload = {
+        "type": "error",
+        "requestId": request_id,
+        "error": error_code,
+        "message": message,
+        "details": details,
+    }
+    if extra:
+        payload.update(extra)
+    return send_ws_message(
+        connection_id=connection_id,
+        domain_name=domain_name,
+        stage=stage,
+        payload=payload,
+    )
+
+
+def send_ws_error_from_event(
+    *,
+    event: dict[str, Any],
+    request_id: str | None,
+    error_code: str,
+    details: str,
+    message: str = "An error occurred in the Agent Lambda.",
+) -> bool:
+    connection_id = event.get("connection_id")
+    domain_name = event.get("domain_name")
+    stage = event.get("stage")
+    if not all(isinstance(value, str) and value for value in (connection_id, domain_name, stage)):
+        return False
+    return send_ws_error(
+        connection_id=connection_id,
+        domain_name=domain_name,
+        stage=stage,
+        request_id=request_id,
+        error_code=error_code,
+        message=message,
+        details=details,
+    )
+
+
 def stream_text(
     *,
     connection_id: str,
@@ -320,7 +377,8 @@ def call_broker_credentials(
             "user_id": user_id,
             "reason": reason,
             "is_staff": "true" if is_staff else "false",
-        }
+        },
+        quote_via=quote,
     )
     separator = "&" if "?" in credentials_url else "?"
     url = f"{credentials_url}{separator}{query}"
@@ -411,6 +469,18 @@ def run_dynamodb_call(
             if limit:
                 kwargs["Limit"] = max(1, min(int(limit), 25))
             response = table.scan(**kwargs)
+        elif operation_name == "query_by_user_id":
+            query_user_id = (key or {}).get("user_id")
+            if not query_user_id:
+                return {
+                    "ok": False,
+                    "error": "missing_user_id",
+                    "message": "key.user_id is required for query_by_user_id.",
+                }
+            kwargs = {"KeyConditionExpression": Key("user_id").eq(query_user_id)}
+            if limit:
+                kwargs["Limit"] = max(1, min(int(limit), 25))
+            response = table.query(**kwargs)
         elif operation_name == "put_item":
             response = table.put_item(Item=decimal_safe(item or {}))
         elif operation_name == "delete_item":
@@ -440,7 +510,7 @@ def run_dynamodb_call(
                 "error": "unsupported_operation",
                 "message": (
                     "operation must be one of get_item, scan, put_item, "
-                    "update_item, delete_item."
+                    "update_item, delete_item, query_by_user_id."
                 ),
             }
     except ClientError as error:
@@ -1045,7 +1115,7 @@ async def stream_rich_agent_response(
         )
         return sanitized
 
-    @function_tool
+    @function_tool(strict_mode=False)
     def run_dynamodb_operation(
         resource_key: str,
         operation: str,
@@ -1058,16 +1128,18 @@ async def stream_rich_agent_response(
     ) -> dict[str, Any]:
         """Run a constrained DynamoDB operation for the user.
 
-        Use this for get_item, scan, put_item, update_item, and delete_item
-        against known resource_key values only. The tool first uses the
+        Use this for get_item, scan, query_by_user_id, put_item, update_item,
+        and delete_item against known resource_key values only. The tool first uses the
         worker's current AWS credentials. After request_aws_access approves
         temporary credentials, this tool uses those credentials on retry. For
-        account_data get_item requests, omit key to use the signed-in user's
+        bank_balances get_item requests, omit key to use the signed-in user's
         own account row.
         """
         operation_name = operation.lower().strip()
         effective_key = key
-        if resource_key == "account_data" and operation_name == "get_item" and not key:
+        if resource_key == "bank_balances" and operation_name == "get_item" and not key:
+            effective_key = {"user_id": user_id}
+        if resource_key == "bank_transactions" and operation_name == "query_by_user_id" and not key:
             effective_key = {"user_id": user_id}
         result = run_dynamodb_call(
             resource_key=resource_key,
@@ -1132,6 +1204,38 @@ async def stream_rich_agent_response(
         )
         return result
 
+    @function_tool
+    def create_cognito_user(
+        email: str,
+        password: str,
+        group: str,
+        name: str | None = None,
+        role: str | None = None,
+        is_human: bool = True,
+    ) -> dict[str, Any]:
+        """Create an application user in Cognito and users-table.
+
+        Required inputs are email, password, and group. This tool does not
+        decide whether the caller is allowed. If it fails with access denied,
+        ask for a clear reason, call request_aws_access, then retry after
+        approval.
+        """
+        result = create_cognito_user_record(
+            email=email,
+            password=password,
+            name=name,
+            group=group,
+            role=role,
+            is_human=is_human,
+            credentials=turn_credentials,
+        )
+        stream.send_tool_result(
+            tool_name="create_cognito_user",
+            status=MessageStatus.COMPLETED if result["ok"] else MessageStatus.ERROR,
+            output=result,
+        )
+        return result
+
     set_default_openai_key(openai_api_key)
     agent = Agent(
         name="UserAgent",
@@ -1154,6 +1258,7 @@ async def stream_rich_agent_response(
             run_dynamodb_operation,
             request_aws_access,
             write_user_policy,
+            create_cognito_user,
         ],
     )
     result = Runner.run_streamed(agent, input=prompt, max_turns=10)
@@ -1239,18 +1344,37 @@ def route_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             payload=payload,
         )
     except Exception as error:
+        details = crash_details(error)
         log(
             "agent_worker_invoke_failed",
             aws_request_id=aws_request_id,
             error_type=type(error).__name__,
             error_message=str(error),
         )
+        try:
+            send_ws_error(
+                connection_id=request_context["connectionId"],
+                domain_name=request_context["domainName"],
+                stage=request_context["stage"],
+                request_id=payload.get("requestId"),
+                error_code="route_handler_failed",
+                message="An error occurred before the Agent worker could start.",
+                details=details,
+            )
+        except Exception as send_error:
+            log(
+                "agent_route_error_send_failed",
+                aws_request_id=aws_request_id,
+                error_type=type(send_error).__name__,
+                error_message=str(send_error),
+                original_error=details,
+            )
         return websocket_response(500)
 
     return websocket_response(200)
 
 
-def worker_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+def _worker_handler_inner(event: dict[str, Any], context: Any) -> dict[str, Any]:
     aws_request_id = request_id(context)
     connection_id = event["connection_id"]
     domain_name = event["domain_name"]
@@ -1304,22 +1428,21 @@ def worker_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     try:
         openai_api_key = get_openai_key()
     except Exception as error:
+        details = crash_details(error)
         log(
             "agent_secret_check_failed",
             aws_request_id=aws_request_id,
             error_type=type(error).__name__,
             error_message=str(error),
         )
-        send_ws_message(
+        send_ws_error(
             connection_id=connection_id,
             domain_name=domain_name,
             stage=stage,
-            payload={
-                "type": "error",
-                "requestId": request_id_value,
-                "error": "openai_secret_check_failed",
-                "message": str(error),
-            },
+            request_id=request_id_value,
+            error_code="openai_secret_check_failed",
+            message="An error occurred while loading the OpenAI secret.",
+            details=details,
         )
         return {"statusCode": 500}
 
@@ -1338,22 +1461,21 @@ def worker_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             )
         )
     except Exception as error:
+        details = crash_details(error)
         log(
             "agent_sdk_stream_failed",
             aws_request_id=aws_request_id,
             error_type=type(error).__name__,
             error_message=str(error),
         )
-        send_ws_message(
+        send_ws_error(
             connection_id=connection_id,
             domain_name=domain_name,
             stage=stage,
-            payload={
-                "type": "error",
-                "requestId": request_id_value,
-                "error": "agent_stream_failed",
-                "message": str(error),
-            },
+            request_id=request_id_value,
+            error_code="agent_stream_failed",
+            message="An error occurred while streaming the Agent response.",
+            details=details,
         )
         return {"statusCode": 502}
 
@@ -1370,6 +1492,40 @@ def worker_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         payload={"type": "done", "requestId": request_id_value},
     )
     return {"statusCode": 200}
+
+
+def worker_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+    try:
+        return _worker_handler_inner(event, context)
+    except Exception as error:
+        aws_request_id = request_id(context)
+        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+        request_id_value = payload.get("requestId")
+        details = crash_details(error)
+        log(
+            "agent_worker_unhandled_error",
+            aws_request_id=aws_request_id,
+            request_id=request_id_value,
+            error_type=type(error).__name__,
+            error_message=str(error),
+        )
+        try:
+            send_ws_error_from_event(
+                event=event,
+                request_id=request_id_value,
+                error_code="worker_crashed",
+                details=details,
+            )
+        except Exception as send_error:
+            log(
+                "agent_worker_error_send_failed",
+                aws_request_id=aws_request_id,
+                request_id=request_id_value,
+                error_type=type(send_error).__name__,
+                error_message=str(send_error),
+                original_error=details,
+            )
+        return {"statusCode": 500}
 
 
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:

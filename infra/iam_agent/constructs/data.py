@@ -31,10 +31,10 @@ class Data(Construct):
             removal_policy=RemovalPolicy.DESTROY,
         )
 
-        self.customer_data_table = dynamodb.Table(
+        self.bank_customer_profiles_table = dynamodb.Table(
             self,
             "CustomerDataTable",
-            table_name="customer_data",
+            table_name="bank_customer_profiles",
             partition_key=dynamodb.Attribute(
                 name="customer_id",
                 type=dynamodb.AttributeType.STRING,
@@ -43,10 +43,10 @@ class Data(Construct):
             removal_policy=RemovalPolicy.DESTROY,
         )
 
-        self.analytics_data_table = dynamodb.Table(
+        self.bank_operational_metrics_table = dynamodb.Table(
             self,
             "AnalyticsDataTable",
-            table_name="analytics_data",
+            table_name="bank_operational_metrics",
             partition_key=dynamodb.Attribute(
                 name="metric_id",
                 type=dynamodb.AttributeType.STRING,
@@ -55,11 +55,15 @@ class Data(Construct):
             removal_policy=RemovalPolicy.DESTROY,
         )
 
-        self.transactions_table = dynamodb.Table(
+        self.bank_transactions_table = dynamodb.Table(
             self,
             "TransactionsTable",
-            table_name="transactions",
+            table_name="bank_transactions",
             partition_key=dynamodb.Attribute(
+                name="user_id",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            sort_key=dynamodb.Attribute(
                 name="transaction_id",
                 type=dynamodb.AttributeType.STRING,
             ),
@@ -67,10 +71,10 @@ class Data(Construct):
             removal_policy=RemovalPolicy.DESTROY,
         )
 
-        self.account_data_table = dynamodb.Table(
+        self.bank_balances_table = dynamodb.Table(
             self,
             "AccountDataTable",
-            table_name="account_data",
+            table_name="bank_balances",
             partition_key=dynamodb.Attribute(
                 name="user_id",
                 type=dynamodb.AttributeType.STRING,
@@ -103,23 +107,23 @@ class Data(Construct):
         )
         CfnOutput(
             self,
-            "CustomerDataTableName",
-            value=self.customer_data_table.table_name,
+            "BankCustomerProfilesTableName",
+            value=self.bank_customer_profiles_table.table_name,
         )
         CfnOutput(
             self,
-            "AnalyticsDataTableName",
-            value=self.analytics_data_table.table_name,
+            "BankOperationalMetricsTableName",
+            value=self.bank_operational_metrics_table.table_name,
         )
         CfnOutput(
             self,
-            "TransactionsTableName",
-            value=self.transactions_table.table_name,
+            "BankTransactionsTableName",
+            value=self.bank_transactions_table.table_name,
         )
         CfnOutput(
             self,
-            "AccountDataTableName",
-            value=self.account_data_table.table_name,
+            "BankBalancesTableName",
+            value=self.bank_balances_table.table_name,
         )
         CfnOutput(
             self,
