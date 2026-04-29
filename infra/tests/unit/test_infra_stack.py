@@ -190,7 +190,7 @@ def test_agent_only_credentials_api_created():
             "Environment": {
                 "Variables": assertions.Match.object_like(
                     {
-                        "CREDENTIALS_URL": assertions.Match.any_value(),
+                        "AGENT_MODEL": "gpt-5-nano",
                         "OPENAI_SECRET_NAME": "openai-key",
                     }
                 ),
@@ -273,24 +273,6 @@ def test_agent_only_credentials_api_created():
         {
             "RouteKey": "requestAccess",
             "AuthorizationType": "NONE",
-        },
-    )
-    template.has_resource_properties(
-        "AWS::IAM::Policy",
-        {
-            "PolicyDocument": {
-                "Statement": assertions.Match.array_with(
-                    [
-                        assertions.Match.object_like(
-                            {
-                                "Action": "execute-api:Invoke",
-                                "Effect": "Allow",
-                                "Resource": assertions.Match.any_value(),
-                            }
-                        )
-                    ]
-                ),
-            },
         },
     )
     template.has_resource_properties(

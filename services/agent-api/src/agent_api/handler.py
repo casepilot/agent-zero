@@ -1,19 +1,18 @@
+import asyncio
 import json
 import os
 from typing import Any
-from urllib.parse import quote, urlencode
 
 import boto3
-from botocore.auth import SigV4Auth
-from botocore.awsrequest import AWSRequest
 from botocore.exceptions import ClientError
-from botocore.httpsession import URLLib3Session
 
 
 _apigateway_management_clients: dict[str, Any] = {}
 _lambda_client: Any | None = None
 _openai_key: str | None = None
 _secretsmanager_client: Any | None = None
+DEFAULT_AGENT_MODEL = "gpt-5-nano"
+FRIENDLY_ASSISTANT_INSTRUCTIONS = "You are a friendly assistant."
 
 
 def get_lambda_client() -> Any:
@@ -79,14 +78,6 @@ def request_id(context: Any) -> str | None:
     return getattr(context, "aws_request_id", None)
 
 
-def response(status_code: int, body: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "statusCode": status_code,
-        "headers": {"content-type": "application/json"},
-        "body": json.dumps(body),
-    }
-
-
 def parse_body(event: dict[str, Any]) -> dict[str, Any]:
     body = event.get("body")
     if not body:
@@ -102,6 +93,14 @@ def parse_body(event: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
+def prompt_from_payload(payload: dict[str, Any]) -> str | None:
+    for key in ("message", "prompt", "reason"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
 def authorizer_context(request_context: dict[str, Any]) -> dict[str, Any]:
     authorizer = request_context.get("authorizer") or {}
     if "user_id" in authorizer:
@@ -111,60 +110,6 @@ def authorizer_context(request_context: dict[str, Any]) -> dict[str, Any]:
 
 def websocket_response(status_code: int = 200) -> dict[str, Any]:
     return {"statusCode": status_code}
-
-
-def sign_request(method: str, url: str) -> AWSRequest:
-    credentials = boto3.Session().get_credentials()
-    if credentials is None:
-        raise RuntimeError("Lambda execution credentials were not available")
-
-    aws_request = AWSRequest(method=method, url=url)
-    SigV4Auth(credentials.get_frozen_credentials(), "execute-api", os.environ["AWS_REGION"]).add_auth(
-        aws_request
-    )
-    return aws_request
-
-
-def call_credentials_endpoint(
-    *,
-    user_id: str,
-    payload: dict[str, Any],
-) -> tuple[int, dict[str, Any]]:
-    query = {
-        "user_id": user_id,
-        "reason": payload.get("reason", ""),
-        "is_staff": str(bool(payload.get("is_staff", True))).lower(),
-    }
-    credentials_url = f"{os.environ['CREDENTIALS_URL']}?{urlencode(query, quote_via=quote)}"
-    prepared_request = sign_request("GET", credentials_url).prepare()
-    result = URLLib3Session(timeout=40).send(prepared_request)
-    body = result.content.decode("utf-8")
-
-    try:
-        parsed_body = json.loads(body)
-    except json.JSONDecodeError:
-        parsed_body = {"raw_body": body}
-
-    return result.status_code, parsed_body
-
-
-def sanitize_broker_body(status_code: int, broker_body: dict[str, Any]) -> dict[str, Any]:
-    if status_code < 400:
-        return broker_body
-
-    decision = broker_body.get("decision")
-    message = broker_body.get("message")
-    safe_message = None
-    if isinstance(message, str):
-        safe_message = message.splitlines()[0]
-
-    safe_body = {
-        "error": broker_body.get("error", "broker_request_failed"),
-        "message": safe_message or "Broker request failed.",
-    }
-    if isinstance(decision, dict):
-        safe_body["decision"] = decision
-    return safe_body
 
 
 def send_ws_message(
@@ -206,6 +151,44 @@ def stream_text(
         stage=stage,
         payload={"type": "delta", "requestId": request_id, "text": text},
     )
+
+
+async def stream_friendly_agent_response(
+    *,
+    connection_id: str,
+    domain_name: str,
+    stage: str,
+    request_id: str | None,
+    prompt: str,
+    openai_api_key: str,
+) -> None:
+    from agents import Agent, Runner, set_default_openai_key
+
+    set_default_openai_key(openai_api_key)
+    agent = Agent(
+        name="FriendlyAssistant",
+        instructions=FRIENDLY_ASSISTANT_INSTRUCTIONS,
+        model=os.environ.get("AGENT_MODEL", DEFAULT_AGENT_MODEL),
+    )
+    result = Runner.run_streamed(agent, input=prompt)
+
+    async for event in result.stream_events():
+        if getattr(event, "type", None) != "raw_response_event":
+            continue
+
+        data = getattr(event, "data", None)
+        delta = getattr(data, "delta", None)
+        if not isinstance(delta, str) or not delta:
+            continue
+
+        if not stream_text(
+            connection_id=connection_id,
+            domain_name=domain_name,
+            stage=stage,
+            request_id=request_id,
+            text=delta,
+        ):
+            break
 
 
 def invoke_worker(
@@ -315,8 +298,23 @@ def worker_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     ):
         return {"statusCode": 410}
 
+    prompt = prompt_from_payload(payload)
+    if prompt is None:
+        send_ws_message(
+            connection_id=connection_id,
+            domain_name=domain_name,
+            stage=stage,
+            payload={
+                "type": "error",
+                "requestId": request_id_value,
+                "error": "missing_prompt",
+                "message": "message, prompt, or reason is required.",
+            },
+        )
+        return {"statusCode": 400}
+
     try:
-        openai_secret_loaded = bool(get_openai_key())
+        openai_api_key = get_openai_key()
     except Exception as error:
         log(
             "agent_secret_check_failed",
@@ -338,20 +336,19 @@ def worker_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         return {"statusCode": 500}
 
     try:
-        stream_text(
-            connection_id=connection_id,
-            domain_name=domain_name,
-            stage=stage,
-            request_id=request_id_value,
-            text="Checking your request with the broker.",
-        )
-        status_code, broker_body = call_credentials_endpoint(
-            user_id=human_user_id,
-            payload=payload,
+        asyncio.run(
+            stream_friendly_agent_response(
+                connection_id=connection_id,
+                domain_name=domain_name,
+                stage=stage,
+                request_id=request_id_value,
+                prompt=prompt,
+                openai_api_key=openai_api_key,
+            )
         )
     except Exception as error:
         log(
-            "agent_broker_call_exception",
+            "agent_sdk_stream_failed",
             aws_request_id=aws_request_id,
             error_type=type(error).__name__,
             error_message=str(error),
@@ -363,45 +360,17 @@ def worker_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             payload={
                 "type": "error",
                 "requestId": request_id_value,
-                "error": "broker_call_failed",
+                "error": "agent_stream_failed",
                 "message": str(error),
             },
         )
         return {"statusCode": 502}
 
-    safe_broker_body = sanitize_broker_body(status_code, broker_body)
     log(
-        "agent_broker_call_completed",
+        "agent_sdk_stream_completed",
         aws_request_id=aws_request_id,
-        broker_status_code=status_code,
-        broker_error=safe_broker_body.get("error"),
-        broker_secret_loaded=safe_broker_body.get("openai_secret_loaded"),
-    )
-
-    # Front-end return patterns:
-    # - Approved: broker_response.status="approved", decision.reason/risk/
-    #   authorization, credentials, and optionally console_login_url.
-    #   Render as: "Automatic approval review approved (risk: medium,
-    #   authorization: high): <decision.reason>".
-    # - Denied by policy/model: broker_response.error="access_denied" with
-    #   decision.reason/risk/authorization when available.
-    # - No policy: broker_response.error="no_policy_found".
-    # - System failure: broker_response.error or top-level error explains the
-    #   failed service path. Stream these states to the front end as the broker
-    #   review progresses.
-    send_ws_message(
-        connection_id=connection_id,
-        domain_name=domain_name,
-        stage=stage,
-        payload={
-            "type": "broker_result",
-            "requestId": request_id_value,
-            "statusCode": status_code,
-            "service": "agent-api",
-            "human_user_id": human_user_id,
-            "openai_secret_loaded": openai_secret_loaded,
-            "broker_response": safe_broker_body,
-        },
+        human_user_id=human_user_id,
+        request_id=request_id_value,
     )
     send_ws_message(
         connection_id=connection_id,
@@ -409,7 +378,7 @@ def worker_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         stage=stage,
         payload={"type": "done", "requestId": request_id_value},
     )
-    return {"statusCode": status_code}
+    return {"statusCode": 200}
 
 
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:

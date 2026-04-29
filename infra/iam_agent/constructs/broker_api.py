@@ -168,11 +168,6 @@ class BrokerApi(Construct):
             authorization_type=apigateway.AuthorizationType.IAM,
         )
 
-        credentials_url = (
-            f"https://{self.api.rest_api_id}.execute-api."
-            f"{Aws.REGION}.{Aws.URL_SUFFIX}/prod/credentials"
-        )
-
         agent_code = lambda_.Code.from_asset(
             str(agent_service_path),
             bundling=agent_bundling,
@@ -204,7 +199,7 @@ class BrokerApi(Construct):
             code=agent_code,
             timeout=Duration.seconds(120),
             environment={
-                "CREDENTIALS_URL": credentials_url,
+                "AGENT_MODEL": "gpt-5-nano",
                 "OPENAI_SECRET_NAME": "openai-key",
             },
         )
@@ -224,19 +219,6 @@ class BrokerApi(Construct):
             },
         )
         self.agent_worker_lambda.grant_invoke(self.agent_route_lambda)
-
-        self.agent_worker_lambda.add_to_role_policy(
-            iam.PolicyStatement(
-                actions=["execute-api:Invoke"],
-                resources=[
-                    self.api.arn_for_execute_api(
-                        method="GET",
-                        path="/credentials",
-                        stage="prod",
-                    )
-                ],
-            )
-        )
 
         self.agent_websocket_api = apigatewayv2.CfnApi(
             self,
