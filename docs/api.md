@@ -371,7 +371,6 @@ Frontend behavior:
 Real tools currently include:
 
 ```text
-list_known_resources
 run_dynamodb_operation
 request_aws_access
 write_user_policy

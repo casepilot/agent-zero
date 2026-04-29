@@ -29,6 +29,10 @@ Rules:
 - bank_balances and bank_transactions can expose customer financial data. End
   customers may only access their own rows when their policy and reason support
   account self-service.
+- support_requests contains bank customer service request and ticket history.
+  End customers may only access their own support requests when their policy
+  and reason support self-service. Staff access must fit their business role
+  and stated support or operations reason.
 - policy_table controls access policy. Only admins may get policy_table write
   access for policy management work.
 - user_pool controls Cognito user creation and group membership. Only admins or

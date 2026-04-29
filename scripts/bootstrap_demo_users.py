@@ -17,6 +17,7 @@ from bootstrap.bank_data import (  # noqa: E402
     BANK_CUSTOMER_PROFILES,
     BANK_OPERATIONAL_METRICS,
     BANK_POLICIES,
+    BANK_SUPPORT_REQUESTS_TEMPLATE,
     BANK_TRANSACTIONS_TEMPLATE,
     BANK_USERS,
     OLD_DEMO_USERNAMES,
@@ -30,6 +31,7 @@ TABLE_KEYS = {
     "bank_operational_metrics": ["metric_id"],
     "bank_transactions": ["user_id", "transaction_id"],
     "bank_balances": ["user_id"],
+    "support-requests": ["user_id", "request_id"],
 }
 
 
@@ -232,11 +234,21 @@ def bootstrap_bank_data(
         }
         for row in BANK_TRANSACTIONS_TEMPLATE
     ]
+    support_requests = [
+        {
+            **row,
+            "user_id": customer_user_id
+            if row["user_id"] == "CUSTOMER_USER_ID"
+            else row["user_id"],
+        }
+        for row in BANK_SUPPORT_REQUESTS_TEMPLATE
+    ]
 
     write_batch(tables["bank_customer_profiles"], customer_profiles)
     write_batch(tables["bank_operational_metrics"], BANK_OPERATIONAL_METRICS)
     write_batch(tables["bank_balances"], balances)
     write_batch(tables["bank_transactions"], transactions)
+    write_batch(tables["support-requests"], support_requests)
 
     print("\nBank demo users:")
     for user in BANK_USERS:
@@ -279,6 +291,7 @@ def main() -> int:
         "bank_operational_metrics": find_output(outputs, "BankOperationalMetricsTableName"),
         "bank_transactions": find_output(outputs, "BankTransactionsTableName"),
         "bank_balances": find_output(outputs, "BankBalancesTableName"),
+        "support-requests": find_output(outputs, "SupportRequestsTableName"),
     }
     tables = {
         logical_name: dynamodb.Table(physical_name)

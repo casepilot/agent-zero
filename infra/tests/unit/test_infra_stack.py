@@ -62,7 +62,7 @@ def test_dynamodb_user_and_policy_tables_created():
     stack = IamAgentStack(app, "iam-agent-data")
     template = assertions.Template.from_stack(stack)
 
-    template.resource_count_is("AWS::DynamoDB::Table", 7)
+    template.resource_count_is("AWS::DynamoDB::Table", 8)
     template.has_resource_properties(
         "AWS::DynamoDB::Table",
         {
@@ -141,6 +141,23 @@ def test_dynamodb_user_and_policy_tables_created():
     template.has_resource_properties(
         "AWS::DynamoDB::Table",
         {
+            "TableName": "support-requests",
+            "KeySchema": [
+                {
+                    "AttributeName": "user_id",
+                    "KeyType": "HASH",
+                },
+                {
+                    "AttributeName": "request_id",
+                    "KeyType": "RANGE",
+                },
+            ],
+            "BillingMode": "PAY_PER_REQUEST",
+        },
+    )
+    template.has_resource_properties(
+        "AWS::DynamoDB::Table",
+        {
             "TableName": "request_logs",
             "KeySchema": [
                 {
@@ -195,6 +212,7 @@ def test_agent_only_credentials_api_created():
                         "BANK_OPERATIONAL_METRICS_TABLE_NAME": assertions.Match.any_value(),
                         "BANK_TRANSACTIONS_TABLE_NAME": assertions.Match.any_value(),
                         "BANK_BALANCES_TABLE_NAME": assertions.Match.any_value(),
+                        "SUPPORT_REQUESTS_TABLE_NAME": assertions.Match.any_value(),
                         "REQUEST_LOGS_TABLE_NAME": assertions.Match.any_value(),
                         "BROKER_CREDENTIALS_ROLE_ARN": assertions.Match.any_value(),
                     }
@@ -248,6 +266,7 @@ def test_agent_only_credentials_api_created():
                         "BANK_OPERATIONAL_METRICS_TABLE_NAME": assertions.Match.any_value(),
                         "BANK_TRANSACTIONS_TABLE_NAME": assertions.Match.any_value(),
                         "BANK_BALANCES_TABLE_NAME": assertions.Match.any_value(),
+                        "SUPPORT_REQUESTS_TABLE_NAME": assertions.Match.any_value(),
                     }
                 ),
             },

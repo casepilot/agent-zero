@@ -143,6 +143,30 @@ def test_bank_transactions_read_access_is_valid():
     assert validated is decision
 
 
+def test_support_requests_read_and_update_access_is_valid():
+    decision = AccessDecision(
+        approved=True,
+        reason="Support ticket request.",
+        risk="medium",
+        authorization="high",
+        duration_seconds=900,
+        grants=[
+            {
+                "resource_key": "support_requests",
+                "actions": ["dynamodb:Query", "dynamodb:UpdateItem"],
+            }
+        ],
+    )
+
+    validated = validate_decision(
+        decision=decision,
+        policy_text=SUPPORT_POLICY,
+        reason="Update ticket SR-2026-1001-002 after customer authorisation check.",
+    )
+
+    assert validated is decision
+
+
 def test_non_admin_or_hr_cannot_write_users_table():
     decision = AccessDecision(
         approved=True,
@@ -332,6 +356,33 @@ def test_bank_balances_session_policy_scopes_leading_key_to_user():
         authorization="high",
         duration_seconds=900,
         grants=[{"resource_key": "bank_balances", "actions": ["dynamodb:GetItem"]}],
+    )
+
+    policy = build_session_policy(decision, catalog, user_id="user-123")
+
+    assert policy["Statement"][0]["Condition"] == {
+        "ForAllValues:StringEquals": {
+            "dynamodb:LeadingKeys": ["user-123"],
+        }
+    }
+
+
+def test_support_requests_session_policy_scopes_leading_key_to_user():
+    catalog = {
+        "support_requests": Resource(
+            key="support_requests",
+            table_name="support-requests",
+            table_arn="arn:aws:dynamodb:ap-southeast-2:123:table/support-requests",
+            purpose="support request data",
+        )
+    }
+    decision = AccessDecision(
+        approved=True,
+        reason="Own support request lookup.",
+        risk="low",
+        authorization="high",
+        duration_seconds=900,
+        grants=[{"resource_key": "support_requests", "actions": ["dynamodb:Query"]}],
     )
 
     policy = build_session_policy(decision, catalog, user_id="user-123")

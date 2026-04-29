@@ -83,6 +83,22 @@ class Data(Construct):
             removal_policy=RemovalPolicy.DESTROY,
         )
 
+        self.support_requests_table = dynamodb.Table(
+            self,
+            "SupportRequestsTable",
+            table_name="support-requests",
+            partition_key=dynamodb.Attribute(
+                name="user_id",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            sort_key=dynamodb.Attribute(
+                name="request_id",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.DESTROY,
+        )
+
         self.request_logs_table = dynamodb.Table(
             self,
             "RequestLogsTable",
@@ -124,6 +140,11 @@ class Data(Construct):
             self,
             "BankBalancesTableName",
             value=self.bank_balances_table.table_name,
+        )
+        CfnOutput(
+            self,
+            "SupportRequestsTableName",
+            value=self.support_requests_table.table_name,
         )
         CfnOutput(
             self,

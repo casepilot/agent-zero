@@ -254,13 +254,14 @@ Current constructs:
 
 - `auth.py` creates the Cognito user pool, app client, and `admin`, `employee`,
   and `customer` groups.
-- `data.py` creates seven DynamoDB tables:
+- `data.py` creates eight DynamoDB tables:
   - `users-table`
   - `policy-table`
   - `bank_customer_profiles`
   - `bank_operational_metrics`
-  - `transactions`
-  - `account_data`
+  - `bank_transactions`
+  - `bank_balances`
+  - `support-requests`
   - `request_logs`
 - `broker_api.py` creates:
   - the broad broker credentials role used with scoped STS session policies
@@ -316,10 +317,10 @@ Current state:
   `error`, and `done` messages back to the WebSocket client.
 - Rich stream messages use `message_marker`, `delta`, and `completed_message`
   stream types for reasoning, tool calls, and assistant answer updates.
-- The agent instructions include policy-table context for identity admins and
-  access request guidance for employees.
-- The live agent exposes tools for listing known resources, requesting broker
-  access, running DynamoDB operations, and writing policy-table records.
+- The agent instructions include private routing context, policy-table context
+  for identity admins, and access request guidance for employees and customers.
+- The live agent exposes tools for requesting broker access, running DynamoDB
+  operations, writing policy-table records, and creating Cognito users.
 - `handler.py` contains an IAM-signed Broker API helper for `GET /credentials`.
   The `request_aws_access` tool uses it and stores approved temporary
   credentials for the current turn.
@@ -349,8 +350,8 @@ Current state:
 - Loads the principal profile from `users-table`.
 - Loads a principal policy from `policy-table`.
 - Loads the OpenAI key from Secrets Manager.
-- Builds a resource catalog for `bank_customer_profiles`, `bank_operational_metrics`, and
-  `policy_table`.
+- Builds a resource catalog for the bank DynamoDB tables, Cognito user pool,
+  users table, and policy table.
 - Calls an OpenAI reviewer for a structured access decision.
 - Validates decisions with deterministic allowlists, deny rules, and schema
   checks.
@@ -382,9 +383,9 @@ Local helper scripts.
 
 Current scripts:
 
-- `bootstrap_demo_users.py` bootstraps demo Cognito users, the demo agent
-  record, demo policies, `bank_customer_profiles` rows, and `bank_operational_metrics` rows. It
-  also supports a dry-run teardown by default.
+- `bootstrap_demo_users.py` bootstraps demo Cognito users, demo policies,
+  bank customer profiles, balances, transactions, support requests, and
+  operational metrics. It also supports a dry-run teardown by default.
 - `deploy_frontend.sh` runs the single-stack CDK deploy for the frontend hosting
   path.
 - `automation/update_layout_with_codex.sh` runs Codex to refresh this layout

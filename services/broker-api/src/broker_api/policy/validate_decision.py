@@ -26,6 +26,7 @@ ALLOWED_ACTIONS_BY_RESOURCE = {
     "bank_operational_metrics": READ_ACTIONS,
     "bank_transactions": READ_ACTIONS,
     "bank_balances": READ_ACTIONS | WRITE_ACTIONS,
+    "support_requests": READ_ACTIONS | WRITE_ACTIONS,
     "policy_table": READ_ACTIONS | WRITE_ACTIONS,
 }
 

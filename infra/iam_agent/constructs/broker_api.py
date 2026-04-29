@@ -68,6 +68,7 @@ class BrokerApi(Construct):
         bank_operational_metrics_table,
         bank_transactions_table,
         bank_balances_table,
+        support_requests_table,
         request_logs_table,
         user_pool_client_id: str,
     ) -> None:
@@ -141,6 +142,8 @@ class BrokerApi(Construct):
                 "BANK_TRANSACTIONS_TABLE_ARN": bank_transactions_table.table_arn,
                 "BANK_BALANCES_TABLE_NAME": bank_balances_table.table_name,
                 "BANK_BALANCES_TABLE_ARN": bank_balances_table.table_arn,
+                "SUPPORT_REQUESTS_TABLE_NAME": support_requests_table.table_name,
+                "SUPPORT_REQUESTS_TABLE_ARN": support_requests_table.table_arn,
                 "REQUEST_LOGS_TABLE_NAME": request_logs_table.table_name,
                 "OPENAI_SECRET_NAME": "openai-key",
             },
@@ -168,6 +171,8 @@ class BrokerApi(Construct):
                     f"{bank_transactions_table.table_arn}/index/*",
                     bank_balances_table.table_arn,
                     f"{bank_balances_table.table_arn}/index/*",
+                    support_requests_table.table_arn,
+                    f"{support_requests_table.table_arn}/index/*",
                 ],
             )
         )
@@ -261,6 +266,7 @@ class BrokerApi(Construct):
                 "BANK_OPERATIONAL_METRICS_TABLE_NAME": bank_operational_metrics_table.table_name,
                 "BANK_TRANSACTIONS_TABLE_NAME": bank_transactions_table.table_name,
                 "BANK_BALANCES_TABLE_NAME": bank_balances_table.table_name,
+                "SUPPORT_REQUESTS_TABLE_NAME": support_requests_table.table_name,
             },
         )
         openai_secret.grant_read(self.agent_worker_lambda)
