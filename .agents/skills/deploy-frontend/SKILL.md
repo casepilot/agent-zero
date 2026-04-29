@@ -1,6 +1,10 @@
 ---
 name: deploy-frontend
-description: Deploy the Agent Zero frontend hosting infrastructure to AWS Amplify. Use when the user says "deploy frontend", "frontend deploy", "deploy the UI", "publish frontend", "deploy Amplify", or asks to run the frontend deployment for this repo.
+description: >-
+  Deploy the Agent Zero frontend hosting infrastructure to AWS Amplify. Use when
+  the user says "deploy frontend", "frontend deploy", "deploy the UI", "publish
+  frontend", "deploy Amplify", or asks to run the frontend deployment for this
+  repo.
 ---
 
 # Deploy Frontend
