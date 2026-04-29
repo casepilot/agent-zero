@@ -143,6 +143,30 @@ def test_bank_transactions_read_access_is_valid():
     assert validated is decision
 
 
+def test_analyst_operational_metrics_read_access_is_valid():
+    decision = AccessDecision(
+        approved=True,
+        reason="Analyst aggregate metrics request.",
+        risk="low",
+        authorization="high",
+        duration_seconds=900,
+        grants=[
+            {
+                "resource_key": "bank_operational_metrics",
+                "actions": ["dynamodb:Scan"],
+            }
+        ],
+    )
+
+    validated = validate_decision(
+        decision=decision,
+        policy_text=ANALYST_POLICY,
+        reason="Review aggregate fraud, liquidity, branch, card, and deposit metrics.",
+    )
+
+    assert validated is decision
+
+
 def test_support_requests_read_and_update_access_is_valid():
     decision = AccessDecision(
         approved=True,

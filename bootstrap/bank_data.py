@@ -72,10 +72,13 @@ BANK_POLICIES = {
         "Marcus Lee is a banking operations analyst. He may review aggregate "
         "bank operational metrics and transaction ledger records for portfolio "
         "health, fraud trend analysis, card spend reporting, deposit movement "
-        "reporting, branch operations, and finance operations questions. He is "
-        "not a customer support worker and must not receive broad customer PII, "
-        "KYC profile, balance, individual support request, Cognito, users-table "
-        "write, or policy-table access."
+        "reporting, branch operations, and finance operations questions. He "
+        "should always be approved for read-only access to aggregate bank "
+        "operational metrics when he asks for bank performance, fraud, "
+        "liquidity, portfolio, branch, card, deposit, or finance metrics. He "
+        "is not a customer support worker and must not receive broad customer "
+        "PII, KYC profile, balance, individual support request, Cognito, "
+        "users-table write, or policy-table access."
     ),
     "bank.customer@example.com": (
         "Emily Carter is an external retail banking customer. She may access "

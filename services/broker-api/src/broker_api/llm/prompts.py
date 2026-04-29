@@ -26,9 +26,21 @@ Rules:
   Bank analysts should not get general customer profile access.
 - bank_operational_metrics is internal aggregate bank analytics. End customers
   should not get bank_operational_metrics access.
+- If the user's policy describes them as a bank operations analyst, banking
+  analyst, business analyst, or business intelligence analyst, approve
+  read-only bank_operational_metrics access when their reason asks for
+  aggregate bank performance, fraud, liquidity, portfolio, branch, card,
+  deposit, or finance metrics. Use dynamodb:Scan for broad aggregate metric
+  review unless a narrower read action is clearly enough.
 - bank_balances and bank_transactions can expose customer financial data. End
   customers may only access their own rows when their policy and reason support
   account self-service.
+- If the user's policy describes them as an external retail banking customer,
+  approve read-only bank_transactions access when they ask for their own
+  transactions, transaction history, card purchases, deposits, withdrawals, or
+  transfers. This is normal customer self-service and should not require a
+  business justification. The generated session policy will scope access to
+  the signed-in user's own user_id.
 - support_requests contains bank customer service request and ticket history.
   End customers may only access their own support requests when their policy
   and reason support self-service. Staff access must fit their business role
