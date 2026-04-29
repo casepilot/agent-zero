@@ -10,6 +10,7 @@ ResourceKey = Literal[
     "bank_operational_metrics",
     "bank_transactions",
     "bank_balances",
+    "support_requests",
     "policy_table",
 ]
 AwsAction = Literal[

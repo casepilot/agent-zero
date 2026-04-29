@@ -5,6 +5,7 @@ import {
   Bot,
   Brain,
   CheckCircle2,
+  Landmark,
   LogOut,
   Loader2,
   RefreshCcw,
@@ -159,6 +160,40 @@ const displayEmail = computed(() => {
   return profile.email || 'Signed in'
 })
 
+const emptyState = computed(() => {
+  const role = sessionProfile.value?.role
+
+  if (role === 'admin') {
+    return {
+      eyebrow: 'AgentZero Bank Admin',
+      title: 'Manage bank access safely',
+      description: 'Create users, update policies, and review privileged bank-data workflows without standing AWS access.',
+    }
+  }
+
+  if (role === 'employee') {
+    return {
+      eyebrow: 'AgentZero Bank Operations',
+      title: 'Request bank data access',
+      description: 'Ask for customer profiles, balances, transactions, support requests, or operational metrics with a clear business reason.',
+    }
+  }
+
+  if (role === 'customer') {
+    return {
+      eyebrow: 'AgentZero Bank Assistant',
+      title: 'Ask about your banking details',
+      description: 'Get help with your profile, balances, transactions, and support requests through a policy-checked banking assistant.',
+    }
+  }
+
+  return {
+    eyebrow: 'AgentZero Bank',
+    title: 'Secure banking assistant',
+    description: 'Ask about bank records or access needs. Sensitive data requests are checked before the agent proceeds.',
+  }
+})
+
 const roleToneClass = computed(() => {
   const role = sessionProfile.value?.role
 
@@ -242,17 +277,17 @@ onBeforeUnmount(() => {
             v-if="!turns.length"
             class="mx-auto flex min-h-[52vh] max-w-2xl flex-col items-center justify-center text-center"
           >
-            <div class="mb-6 flex size-16 items-center justify-center rounded-lg bg-sky-300 text-slate-950 shadow-[0_0_38px_rgba(125,211,252,0.38)]">
-              <Bot class="size-8" />
+            <div class="mb-6 flex size-16 items-center justify-center rounded-lg bg-emerald-300 text-slate-950 shadow-[0_0_38px_rgba(110,231,183,0.34)]">
+              <Landmark class="size-8" />
             </div>
             <p class="text-base font-medium text-sky-100/80">
-              IAM Agent
+              {{ emptyState.eyebrow }}
             </p>
             <h1 class="mt-3 text-4xl font-semibold tracking-normal text-white">
-              Ask for support access
+              {{ emptyState.title }}
             </h1>
             <p class="mt-4 max-w-xl text-base leading-7 text-slate-400">
-              Start with the customer request, ticket context, or policy question you want the agent to handle.
+              {{ emptyState.description }}
             </p>
           </div>
 

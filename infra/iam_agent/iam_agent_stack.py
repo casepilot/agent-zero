@@ -24,6 +24,7 @@ class IamAgentStack(Stack):
             bank_operational_metrics_table=self.data.bank_operational_metrics_table,
             bank_transactions_table=self.data.bank_transactions_table,
             bank_balances_table=self.data.bank_balances_table,
+            support_requests_table=self.data.support_requests_table,
             request_logs_table=self.data.request_logs_table,
             user_pool_client_id=self.auth.user_pool_client.ref,
         )

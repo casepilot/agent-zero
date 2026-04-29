@@ -65,7 +65,8 @@ BANK_POLICIES = {
         "She may request temporary access only for bank user onboarding, access "
         "governance, break-glass access review, or policy administration work. "
         "Grant the minimum required access and deny unrelated customer banking "
-        "data access unless the reason is explicitly tied to an access review."
+        "data or support request access unless the reason is explicitly tied to "
+        "an access review."
     ),
     "bank.analyst@example.com": (
         "Marcus Lee is a banking operations analyst. He may review aggregate "
@@ -73,25 +74,27 @@ BANK_POLICIES = {
         "health, fraud trend analysis, card spend reporting, deposit movement "
         "reporting, branch operations, and finance operations questions. He is "
         "not a customer support worker and must not receive broad customer PII, "
-        "KYC profile, balance, Cognito, users-table write, or policy-table "
-        "access."
+        "KYC profile, balance, individual support request, Cognito, users-table "
+        "write, or policy-table access."
     ),
     "bank.customer@example.com": (
         "Emily Carter is an external retail banking customer. She may access "
-        "only her own bank balance and her own transaction history for customer "
-        "self-service. Her access must be scoped to her signed-in user_id and "
-        "must not include other customer profiles, operational metrics, policy "
-        "data, Cognito, users-table administration, or employee-only records."
+        "only her own bank balance, her own transaction history, and her own "
+        "support request history for customer self-service. Her access must be "
+        "scoped to her signed-in user_id and must not include other customer "
+        "profiles, operational metrics, policy data, Cognito, users-table "
+        "administration, or employee-only records."
     ),
     "it.support@example.com": (
         "Noah Patel is an IT support engineer for the bank. He may inspect "
-        "customer profile, account balance, and transaction records only when "
-        "working an assigned IT or customer support ticket involving login "
-        "issues, account authorisation checks, disputed access, card support, "
-        "or customer account troubleshooting. He may update support notes or "
-        "operational status fields when the ticket requires it. He is not an "
-        "access administrator and must not receive policy-table, Cognito user "
-        "management, users-table write, or broad operational metrics access."
+        "support request records, customer profile, account balance, and "
+        "transaction records only when working an assigned IT or customer "
+        "support ticket involving login issues, account authorisation checks, "
+        "disputed access, card support, or customer account troubleshooting. He "
+        "may update support notes, ticket status, or operational status fields "
+        "when the ticket requires it. He is not an access administrator and "
+        "must not receive policy-table, Cognito user management, users-table "
+        "write, or broad operational metrics access."
     ),
 }
 
@@ -302,6 +305,107 @@ BANK_TRANSACTIONS_TEMPLATE = [
         "direction": "credit",
         "status": "posted",
         "risk_signal": "none",
+    },
+]
+
+BANK_SUPPORT_REQUESTS_TEMPLATE = [
+    {
+        "request_id": "SR-2026-1001-001",
+        "user_id": "CUSTOMER_USER_ID",
+        "customer_id": "CUST-1001",
+        "submitted_at": "2026-04-20T08:17:00Z",
+        "channel": "mobile_app",
+        "category": "card_dispute",
+        "priority": "high",
+        "status": "in_review",
+        "assigned_team": "Cards Support",
+        "related_account_id": "ACC-1001-CHK",
+        "summary": "Customer queried a Qantas Airways card purchase and requested confirmation that travel-pattern checks passed.",
+        "latest_update": "Fraud review found no compromise indicators; customer asked for written confirmation.",
+    },
+    {
+        "request_id": "SR-2026-1001-002",
+        "user_id": "CUSTOMER_USER_ID",
+        "customer_id": "CUST-1001",
+        "submitted_at": "2026-04-23T14:42:00Z",
+        "channel": "web_chat",
+        "category": "account_authorisation",
+        "priority": "medium",
+        "status": "open",
+        "assigned_team": "Digital Banking Support",
+        "related_account_id": "ACC-1001-SAV",
+        "summary": "Customer asked why a savings account nickname change required step-up authentication.",
+        "latest_update": "Support confirmed device trust expired after new handset enrolment.",
+    },
+    {
+        "request_id": "SR-2026-1002-001",
+        "user_id": "external-customer-CUST-1002",
+        "customer_id": "CUST-1002",
+        "submitted_at": "2026-04-18T02:35:00Z",
+        "channel": "phone",
+        "category": "card_replacement",
+        "priority": "high",
+        "status": "awaiting_customer",
+        "assigned_team": "Cards Support",
+        "related_account_id": "ACC-1002-CHK",
+        "summary": "Premier customer reported a damaged debit card and requested courier replacement.",
+        "latest_update": "Replacement card issued; courier delivery address awaiting verbal confirmation.",
+    },
+    {
+        "request_id": "SR-2026-1003-001",
+        "user_id": "external-customer-CUST-1003",
+        "customer_id": "CUST-1003",
+        "submitted_at": "2026-04-11T23:09:00Z",
+        "channel": "branch",
+        "category": "business_authority",
+        "priority": "medium",
+        "status": "pending_documents",
+        "assigned_team": "Business Banking Support",
+        "related_account_id": "ACC-1003-BUS",
+        "summary": "Small business customer requested removal of an old account signatory.",
+        "latest_update": "Certified company extract requested before authority changes can proceed.",
+    },
+    {
+        "request_id": "SR-2026-1004-001",
+        "user_id": "external-customer-CUST-1004",
+        "customer_id": "CUST-1004",
+        "submitted_at": "2026-04-09T05:28:00Z",
+        "channel": "secure_message",
+        "category": "mortgage_offset",
+        "priority": "low",
+        "status": "resolved",
+        "assigned_team": "Home Lending Support",
+        "related_account_id": "ACC-1004-OFFSET",
+        "summary": "Customer asked whether the offset account balance was reducing interest from the next repayment cycle.",
+        "latest_update": "Offset linkage confirmed active from 2026-04-01 and customer notified.",
+    },
+    {
+        "request_id": "SR-2026-1005-001",
+        "user_id": "external-customer-CUST-1005",
+        "customer_id": "CUST-1005",
+        "submitted_at": "2026-04-06T17:51:00Z",
+        "channel": "mobile_app",
+        "category": "fraud_alert",
+        "priority": "critical",
+        "status": "resolved",
+        "assigned_team": "Fraud Operations",
+        "related_account_id": "ACC-1005-CHK",
+        "summary": "Customer disputed two online card attempts flagged by fraud monitoring.",
+        "latest_update": "Card blocked, replacement issued, disputed attempts confirmed declined before posting.",
+    },
+    {
+        "request_id": "SR-2026-1006-001",
+        "user_id": "external-customer-CUST-1006",
+        "customer_id": "CUST-1006",
+        "submitted_at": "2026-04-15T12:20:00Z",
+        "channel": "relationship_manager",
+        "category": "term_deposit",
+        "priority": "low",
+        "status": "open",
+        "assigned_team": "Wealth Support",
+        "related_account_id": "ACC-1006-SAV",
+        "summary": "Customer asked for term deposit rollover options before maturity.",
+        "latest_update": "Relationship manager preparing comparison of 6, 9, and 12 month terms.",
     },
 ]
 

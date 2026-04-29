@@ -14,6 +14,8 @@ def test_agent_instructions_keep_authorization_in_broker(monkeypatch):
     assert "policy_table: DynamoDB table policy-table" in instructions
     assert "bank_transactions: DynamoDB table bank_transactions" in instructions
     assert "user_pool: Cognito user pool" in instructions
+    assert "Never reveal table names" in instructions
+    assert "private routing context" in instructions
     assert "create_cognito_user" in instructions
     assert "you do not decide authorization" in instructions
     assert "credentials broker, decides" in instructions

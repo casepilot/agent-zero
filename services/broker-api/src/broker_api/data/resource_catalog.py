@@ -72,6 +72,17 @@ def get_resource_catalog() -> dict[str, Resource]:
                 "last statement date."
             ),
         ),
+        "support_requests": Resource(
+            key="support_requests",
+            table_name=os.environ["SUPPORT_REQUESTS_TABLE_NAME"],
+            table_arn=os.environ["SUPPORT_REQUESTS_TABLE_ARN"],
+            purpose=(
+                "Bank customer support request and ticket history keyed by "
+                "user_id and request_id. Contains customer-submitted service "
+                "requests, categories, status, priority, assigned team, "
+                "summaries, and latest support updates."
+            ),
+        ),
         "policy_table": Resource(
             key="policy_table",
             table_name=os.environ["POLICY_TABLE_NAME"],
