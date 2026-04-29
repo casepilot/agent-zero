@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import UTC, datetime
 from typing import Any
 
 import boto3
@@ -84,6 +85,97 @@ def safe_error_message(error: Exception) -> str:
     return message
 
 
+def utc_now() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def clean_audit_value(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        cleaned = {
+            key: clean_audit_value(child)
+            for key, child in value.items()
+            if child is not None
+        }
+        return {key: child for key, child in cleaned.items() if child is not None}
+    if isinstance(value, list):
+        return [
+            child
+            for child in (clean_audit_value(child) for child in value)
+            if child is not None
+        ]
+    return value
+
+
+def get_request_logs_table() -> Any:
+    return get_dynamodb_resource().Table(os.environ["REQUEST_LOGS_TABLE_NAME"])
+
+
+def build_audit_context(
+    *,
+    event: dict[str, Any],
+    context: Any,
+    request_context: dict[str, Any],
+    identity: dict[str, Any],
+    query: dict[str, Any],
+) -> dict[str, Any]:
+    audit_request_id = (
+        request_id(context)
+        or request_context.get("requestId")
+        or "unknown-request"
+    )
+    caller_arn = identity.get("userArn") or identity.get("caller")
+    return {
+        "request_id": audit_request_id,
+        "created_at": utc_now(),
+        "updated_at": utc_now(),
+        "http_method": event.get("httpMethod"),
+        "path": event.get("path"),
+        "api_gateway_request_id": request_context.get("requestId"),
+        "lambda_request_id": request_id(context),
+        "caller_arn": caller_arn,
+        "identity_keys": sorted(identity.keys()),
+        "user_id": query.get("user_id"),
+        "request_reason": query.get("reason"),
+        "requested_console_url": bool_param(query.get("is_staff")),
+    }
+
+
+def put_audit_record(item: dict[str, Any], *, required: bool = False) -> bool:
+    audit_item = clean_audit_value(item)
+    try:
+        get_request_logs_table().put_item(Item=audit_item)
+        return True
+    except Exception as error:
+        log(
+            "broker_audit_log_failed",
+            request_id=item.get("request_id"),
+            status=item.get("status"),
+            error_type=type(error).__name__,
+            error=safe_error_message(error),
+        )
+        if required:
+            raise
+        return False
+
+
+def audit_terminal(
+    base: dict[str, Any],
+    *,
+    status: str,
+    required: bool = False,
+    **fields: Any,
+) -> bool:
+    item = {
+        **base,
+        **fields,
+        "status": status,
+        "updated_at": utc_now(),
+    }
+    return put_audit_record(item, required=required)
+
+
 def load_policy(user_id: str) -> str | None:
     table = get_dynamodb_resource().Table(os.environ["POLICY_TABLE_NAME"])
     item = table.get_item(Key={"user_id": user_id}).get("Item")
@@ -106,11 +198,53 @@ def load_user_role(user_id: str) -> str | None:
     return role
 
 
+def load_user_profile(user_id: str) -> dict[str, Any]:
+    table = get_dynamodb_resource().Table(os.environ["USERS_TABLE_NAME"])
+    item = table.get_item(Key={"user_id": user_id}).get("Item") or {}
+    if not isinstance(item, dict):
+        return {}
+    return item
+
+
+def user_audit_fields(user_profile: dict[str, Any]) -> dict[str, Any]:
+    role = user_profile.get("role")
+    is_human = user_profile.get("is_human")
+    if isinstance(is_human, bool):
+        principal_type = "human" if is_human else "agent"
+    else:
+        principal_type = None
+    return {
+        "principal_type": principal_type,
+        "principal_role": role if isinstance(role, str) else None,
+        "principal_name": user_profile.get("name"),
+        "principal_username": user_profile.get("username"),
+    }
+
+
+def safe_session_name(user_id: str, audit_request_id: str) -> str:
+    safe_user_id = "".join(
+        character if character.isalnum() or character in ("-", "_") else "-"
+        for character in user_id
+    )[:32]
+    safe_request_id = "".join(
+        character if character.isalnum() or character in ("-", "_") else "-"
+        for character in audit_request_id
+    )[-20:]
+    return f"agent-zero-{safe_user_id}-{safe_request_id}"[:64]
+
+
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     aws_request_id = request_id(context)
     request_context = event.get("requestContext", {})
     identity = request_context.get("identity", {})
     query = event.get("queryStringParameters") or {}
+    audit_base = build_audit_context(
+        event=event,
+        context=context,
+        request_context=request_context,
+        identity=identity,
+        query=query,
+    )
 
     log(
         "broker_request_started",
@@ -123,6 +257,12 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     if event.get("httpMethod") != "GET":
         log("broker_request_rejected", aws_request_id=aws_request_id, reason="method")
+        audit_terminal(
+            audit_base,
+            status="rejected",
+            error_code="method_not_allowed",
+            error_message="Only GET is allowed.",
+        )
         return response(405, {"error": "method_not_allowed"})
 
     caller_arn = identity.get("userArn") or identity.get("caller")
@@ -133,6 +273,12 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             reason="missing_iam_identity",
             identity_keys=sorted(identity.keys()),
         )
+        audit_terminal(
+            audit_base,
+            status="rejected",
+            error_code="missing_iam_identity",
+            error_message="IAM identity was missing from the request.",
+        )
         return response(401, {"error": "missing_iam_identity"})
 
     if "resource" in query:
@@ -140,6 +286,12 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             "broker_request_rejected",
             aws_request_id=aws_request_id,
             reason="caller_supplied_resource",
+        )
+        audit_terminal(
+            audit_base,
+            status="rejected",
+            error_code="resource_not_allowed",
+            error_message="Resource is chosen by the broker, not by the caller.",
         )
         return response(
             400,
@@ -159,11 +311,24 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             has_user_id=bool(user_id),
             has_reason=bool(reason),
         )
+        audit_terminal(
+            audit_base,
+            status="rejected",
+            error_code="bad_request",
+            error_message="user_id and reason are required.",
+            has_user_id=bool(user_id),
+            has_reason=bool(reason),
+        )
         return response(
             400,
             {"error": "bad_request", "message": "user_id and reason are required."},
         )
 
+    user_profile = load_user_profile(user_id)
+    audit_base = {
+        **audit_base,
+        **user_audit_fields(user_profile),
+    }
     policy_text = load_policy(user_id)
     if policy_text is None:
         log(
@@ -171,6 +336,13 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             aws_request_id=aws_request_id,
             user_id=user_id,
             reason="no_policy_found",
+        )
+        audit_terminal(
+            audit_base,
+            status="denied",
+            error_code="no_policy_found",
+            error_message=f"No policy found for {user_id}.",
+            policy_snapshot=None,
         )
         return response(
             403,
@@ -195,6 +367,14 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             user_id=user_id,
             error=str(error),
         )
+        audit_terminal(
+            audit_base,
+            status="error",
+            error_code="decision_failed",
+            error_type=type(error).__name__,
+            error_message=str(error),
+            policy_snapshot=policy_text,
+        )
         return response(500, {"error": "decision_failed", "message": str(error)})
     except Exception as error:
         log(
@@ -203,6 +383,14 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             user_id=user_id,
             error_type=type(error).__name__,
             error=safe_error_message(error),
+        )
+        audit_terminal(
+            audit_base,
+            status="error",
+            error_code="llm_failed",
+            error_type=type(error).__name__,
+            error_message=safe_error_message(error),
+            policy_snapshot=policy_text,
         )
         return response(500, {"error": "llm_failed", "message": safe_error_message(error)})
 
@@ -213,6 +401,17 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             user_id=user_id,
             reason="llm_denied",
             decision_reason=decision.reason,
+        )
+        audit_terminal(
+            audit_base,
+            status="denied",
+            error_code="access_denied",
+            error_message=decision.reason,
+            policy_snapshot=policy_text,
+            decision=decision.model_dump(),
+            validator_result="passed",
+            grants=[],
+            duration_seconds=decision.duration_seconds,
         )
         return response(
             403,
@@ -227,12 +426,39 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         decision,
         catalog,
         include_dynamodb_list_tables=user_role == "employee",
+        include_dynamodb_scan=bool_param(query.get("is_staff")),
     )
+    role_session_name = safe_session_name(user_id, audit_base["request_id"])
+    target_role_arn = os.environ["BROKER_CREDENTIALS_ROLE_ARN"]
+    try:
+        audit_terminal(
+            audit_base,
+            status="approved_pending_sts",
+            required=True,
+            policy_snapshot=policy_text,
+            decision=decision.model_dump(),
+            validator_result="passed",
+            grants=[grant.model_dump() for grant in decision.grants],
+            duration_seconds=decision.duration_seconds,
+            session_policy=session_policy,
+            target_role_arn=target_role_arn,
+            role_session_name=role_session_name,
+        )
+    except Exception as error:
+        return response(
+            500,
+            {
+                "error": "audit_log_failed",
+                "message": safe_error_message(error),
+            },
+        )
+
     try:
         credentials = assume_scoped_role(
             user_id=user_id,
             decision=decision,
             session_policy=session_policy,
+            role_session_name=role_session_name,
         )
         body: dict[str, Any] = {
             "status": "approved",
@@ -251,8 +477,38 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             error_type=type(error).__name__,
             error=str(error),
         )
+        audit_terminal(
+            audit_base,
+            status="error",
+            error_code="credential_issue_failed",
+            error_type=type(error).__name__,
+            error_message=safe_error_message(error),
+            policy_snapshot=policy_text,
+            decision=decision.model_dump(),
+            validator_result="passed",
+            grants=[grant.model_dump() for grant in decision.grants],
+            duration_seconds=decision.duration_seconds,
+            session_policy=session_policy,
+            target_role_arn=target_role_arn,
+            role_session_name=role_session_name,
+        )
         return response(500, {"error": "credential_issue_failed", "message": str(error)})
 
+    audit_terminal(
+        audit_base,
+        status="approved",
+        policy_snapshot=policy_text,
+        decision=decision.model_dump(),
+        validator_result="passed",
+        grants=[grant.model_dump() for grant in decision.grants],
+        duration_seconds=decision.duration_seconds,
+        session_policy=session_policy,
+        target_role_arn=target_role_arn,
+        role_session_name=role_session_name,
+        assumed_role_arn=credentials.get("assumed_role_arn"),
+        assumed_role_id=credentials.get("assumed_role_id"),
+        credentials_expiration=credentials.get("expiration"),
+    )
     log(
         "broker_request_approved",
         aws_request_id=aws_request_id,

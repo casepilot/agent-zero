@@ -2,7 +2,7 @@
 
 1. [x] Spin up a Python CDK app in `infra/`.
 2. [x] Create the base CDK stack and environment config.
-3. [ ] Add DynamoDB tables for principals, policies, request logs, and demo app data. Users, policy, customer_data, and analytics_data tables are added; request logs remain.
+3. [x] Add DynamoDB tables for principals, policies, request logs, and demo app data.
 4. [x] Add Cognito user pool, app client, and groups for `admin` and `employee`.
 5. [x] Add broad target IAM roles for DynamoDB, S3, and future AWS resource access.
 6. [ ] Create `services/shared/` for shared types, schemas, errors, and logging helpers.
@@ -17,7 +17,7 @@
 15. [x] Add session policy generation for approved requests.
 16. [x] Add `sts:AssumeRole` with the inline session policy.
 17. [x] Add AWS console sign-in URL generation for human users.
-18. [ ] Add broker-side request logging to DynamoDB.
+18. [x] Add broker-side request logging to DynamoDB.
 19. [x] Create `services/agent-api/` with Lambdas behind an API Gateway WebSocket API.
 20. [ ] Add agent tools that request broker access and then perform approved DynamoDB actions.
 21. [ ] Create the Streamlit staff app in `apps/staff/`.

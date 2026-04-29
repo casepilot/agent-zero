@@ -55,6 +55,18 @@ class Data(Construct):
             removal_policy=RemovalPolicy.DESTROY,
         )
 
+        self.request_logs_table = dynamodb.Table(
+            self,
+            "RequestLogsTable",
+            table_name="request_logs",
+            partition_key=dynamodb.Attribute(
+                name="request_id",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.DESTROY,
+        )
+
         CfnOutput(
             self,
             "UsersTableName",
@@ -74,4 +86,9 @@ class Data(Construct):
             self,
             "AnalyticsDataTableName",
             value=self.analytics_data_table.table_name,
+        )
+        CfnOutput(
+            self,
+            "RequestLogsTableName",
+            value=self.request_logs_table.table_name,
         )
