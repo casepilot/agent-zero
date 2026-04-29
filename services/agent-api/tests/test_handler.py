@@ -74,6 +74,8 @@ def test_worker_streams_agent_result(monkeypatch):
 
     async def fake_stream_rich_agent_response(**kwargs):
         assert kwargs["user_id"] == "trusted-cognito-sub"
+        assert kwargs["user_type"] == "employee"
+        assert kwargs["groups"] == {"employee"}
         assert kwargs["is_staff"] is True
         stream = handler.WebSocketAgentStream(
             connection_id=kwargs["connection_id"],
@@ -260,7 +262,7 @@ def test_stream_manager_maps_reasoning_tool_and_answer_events(monkeypatch):
         if message["streamType"] == "completed_message"
     ]
     assert completed_events[0]["data"][0]["message"]["data"]["tool_name"] == (
-        "run_dynamodb_operation"
+        "Accessing bank data"
     )
     assert "tenantId" not in completed_events[0]["data"][0]["message"]
     assert "caseId" not in completed_events[0]["data"][0]["message"]
@@ -393,6 +395,13 @@ def test_staff_status_comes_from_cognito_groups():
     assert handler.is_staff_from_groups({"customer"}) is False
 
 
+def test_user_type_comes_from_cognito_groups():
+    assert handler.user_type_from_groups({"customer"}) == "customer"
+    assert handler.user_type_from_groups({"admin"}) == "admin"
+    assert handler.user_type_from_groups({"employee"}) == "employee"
+    assert handler.user_type_from_groups(set()) == "unknown"
+
+
 def test_call_broker_credentials_uses_expected_query(monkeypatch):
     captured = {}
     monkeypatch.setenv(
@@ -463,15 +472,34 @@ def test_stream_manager_can_send_tool_result(monkeypatch):
     stream.send_tool_result(
         tool_name="run_dynamodb_operation",
         status=handler.MessageStatus.ERROR,
-        output={"ok": False, "error": "AccessDeniedException"},
+        output={
+            "ok": False,
+            "error": "AccessDeniedException",
+            "resource_key": "bank_balances",
+        },
     )
 
     message = sent_messages[0]["data"][0]["message"]
     assert sent_messages[0]["streamType"] == "completed_message"
     assert message["data"]["type"] == "tool_result"
     assert message["data"]["status"] == "error"
-    assert message["data"]["tool_name"] == "run_dynamodb_operation"
+    assert message["data"]["tool_name"] == "Accessing bank balances database"
     assert "AccessDeniedException" in message["data"]["output"]
+
+
+def test_tool_display_names_are_frontend_friendly():
+    assert (
+        handler.display_tool_name(
+            "run_dynamodb_operation",
+            arguments='{"resource_key":"bank_transactions"}',
+        )
+        == "Accessing bank transactions database"
+    )
+    assert (
+        handler.display_tool_name("request_aws_access")
+        == "Requesting access from Agent Zero"
+    )
+    assert "_" not in handler.display_tool_name("write_user_policy")
 
 
 def test_run_dynamodb_call_returns_access_denied(monkeypatch):
