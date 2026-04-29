@@ -54,6 +54,7 @@ agent-zero/
       lib/
         utils.ts
       composables/
+        useAgentChat.ts
         useAmplifyAuth.ts
       middleware/
         auth.global.ts
@@ -65,6 +66,7 @@ agent-zero/
         amplify.client.ts
 
   docs/
+    api.md
     project.md
     to_do.md
     layout.md
@@ -167,11 +169,9 @@ agent-zero/
     node_modules/
     .nuxt/
     .output/
-    app/
-      pages/
-        chats/
   infra/
     .venv/
+    cdk.out/
     iam_agent/
       __pycache__/
       config/
@@ -182,9 +182,6 @@ agent-zero/
 
 Other ignored local folders may appear after running tools, such as
 `__pycache__/`, `.pytest_cache/`, `.venv/`, `cdk.out/`, or `infra/cdk.out/`.
-
-The local `app/app/pages/chats/` folder is currently empty. It is not part of
-the checked-in layout unless route files are added there.
 
 ## Current Folder Roles
 
@@ -210,9 +207,12 @@ Current state:
 - `app/app/pages/login.vue` is the login screen wired to Cognito through the
   Amplify client SDK.
 - `app/app/pages/chat.vue` is the single desktop chat interface. It starts as
-  an empty chat with a bottom prompt input, simulated streaming, and visible
-  sign out.
-- `app/app/composables/useAmplifyAuth.ts` contains shared Amplify Auth helpers.
+  an empty chat with a bottom prompt input, live Agent API WebSocket streaming,
+  retry handling, and visible sign out.
+- `app/app/composables/useAgentChat.ts` contains the Agent API WebSocket client,
+  stream reducer, retry flow, and socket cleanup.
+- `app/app/composables/useAmplifyAuth.ts` contains shared Amplify Auth helpers,
+  including access-token retrieval for WebSocket auth.
 - `app/app/middleware/auth.global.ts` protects every route except `/login`.
 - `app/app/plugins/amplify.client.ts` configures Amplify on the client.
 - `app/app/components/ui/` contains shadcn-style button, input, and label
@@ -220,10 +220,10 @@ Current state:
 - `app/app/lib/utils.ts` contains the shared `cn()` class helper.
 - `app/.env` is an ignored local file with public Cognito client config:
   `NUXT_PUBLIC_AWS_REGION`, `NUXT_PUBLIC_COGNITO_USER_POOL_ID`, and
-  `NUXT_PUBLIC_COGNITO_USER_POOL_CLIENT_ID`.
+  `NUXT_PUBLIC_COGNITO_USER_POOL_CLIENT_ID`. It can also hold
+  `NUXT_PUBLIC_AGENT_WS_URL` for the Agent API WebSocket endpoint.
 
-Admin screens, employee request screens, and the live customer support LLM flow
-are not built yet.
+Admin screens and employee request screens are not built yet.
 
 ### `docs/`
 
@@ -233,6 +233,8 @@ Current docs:
 
 - `project.md` explains the product, access model, security model, and demo
   story.
+- `api.md` documents the current Agent API WebSocket contract and stream
+  envelope.
 - `to_do.md` is the source of truth for build status and next work.
 - `layout.md` describes the repo layout.
 
@@ -302,22 +304,27 @@ Current state:
   `requestAccess` events.
 - `requestAccess` parses the WebSocket body and invokes the worker Lambda
   asynchronously.
-- The worker runs the OpenAI Agents SDK and streams `ack`, `delta`,
-  `broker_result`, `done`, and error messages back to the WebSocket client.
+- The worker runs the OpenAI Agents SDK and sends top-level `ack`, `stream`,
+  `error`, and `done` messages back to the WebSocket client.
+- Rich stream messages use `message_marker`, `delta`, and `completed_message`
+  stream types for reasoning, tool calls, and assistant answer updates.
 - The agent instructions include policy-table context for identity admins and
   access request guidance for employees.
-- The worker exposes a `request_aws_access` tool that calls the Broker API
-  `GET /credentials` endpoint using IAM-signed requests.
-- The broker call uses the trusted Cognito `sub` from the authorizer context,
-  not a caller-supplied body value.
+- The live agent currently exposes a `check_agent_employee_access` demo tool so
+  the UI can render tool-call lifecycle events.
+- `handler.py` also contains an IAM-signed Broker API helper for
+  `GET /credentials`, but that helper is not wired into the live agent tool path
+  yet.
+- The worker uses the trusted Cognito `sub` from the authorizer context, not a
+  caller-supplied body value.
 - The worker loads the OpenAI key from Secrets Manager before starting the
   agent stream.
-- `tests/test_handler.py` checks trusted authorizer identity handling and worker
-  streaming behavior.
+- `tests/test_handler.py` checks trusted authorizer identity handling, staff
+  group handling, stream envelope mapping, and the broker query helper.
 
-This service can request broker credentials, but it does not yet use approved
-credentials to perform DynamoDB actions. The Nuxt chat screen is also still
-simulated and not wired to this WebSocket flow.
+This service can build a broker credentials request, but the live agent tool
+does not yet request broker credentials or use approved credentials to perform
+DynamoDB actions. The Nuxt chat screen is wired to this WebSocket flow.
 
 ### `services/broker-api/`
 
@@ -421,7 +428,6 @@ agent-zero/
 
   docs/
     architecture.md
-    api.md
     demo-script.md
     threat-model.md
 ```
@@ -453,8 +459,6 @@ The Nuxt app still needs:
 
 - admin screens for creating humans, agents, and free-text policies
 - employee screens for requesting access and receiving console URLs
-- WebSocket integration with `services/agent-api/`
-- live customer support LLM behavior instead of simulated chat streaming
 
 ### `demo-data/`
 
@@ -468,6 +472,5 @@ Move or copy it here if the project needs reusable fixtures.
 Planned docs:
 
 - `architecture.md`
-- `api.md`
 - `demo-script.md`
 - `threat-model.md`

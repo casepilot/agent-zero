@@ -1,5 +1,10 @@
 import { Amplify } from 'aws-amplify'
-import { getCurrentUser as amplifyGetCurrentUser, signIn, signOut as amplifySignOut } from 'aws-amplify/auth'
+import {
+  fetchAuthSession,
+  getCurrentUser as amplifyGetCurrentUser,
+  signIn,
+  signOut as amplifySignOut,
+} from 'aws-amplify/auth'
 
 let isConfigured = false
 
@@ -95,6 +100,13 @@ export function useAmplifyAuth() {
       }
 
       await amplifySignOut()
+    },
+
+    async getAccessToken(forceRefresh = false) {
+      requireAmplifyAuth()
+
+      const session = await fetchAuthSession({ forceRefresh })
+      return session.tokens?.accessToken?.toString() || ''
     },
   }
 }
