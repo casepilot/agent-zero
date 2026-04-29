@@ -29,7 +29,7 @@
 27. [ ] Connect the Nuxt chat app to the customer support LLM agent. Agent API now has rich WebSocket streaming for OpenAI Agents SDK turns, including markers, reasoning summaries, tool calls, final answer deltas, and end-turn events.
 28. [ ] Add demo data for customers, flights, bookings, and sensitive internal records. customer_data and analytics_data are bootstrapped; flights, bookings, and sensitive internal records remain.
 29. [ ] Add scripts for seeding demo data and printing deployed stack outputs. Demo user bootstrap now seeds and tears down users, policies, customer_data, and analytics_data.
-30. [ ] Write docs for architecture, API usage, threat model, and the hackathon demo script.
+30. [ ] Write docs for architecture, API usage, threat model, and the hackathon demo script. Agent WebSocket streaming contract is documented in `docs/api.md`.
 31. [ ] Run an end-to-end demo path for human approval, agent approval, and agent denial.
 
 ## Frontend Hosting
