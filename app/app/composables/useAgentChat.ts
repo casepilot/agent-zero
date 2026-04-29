@@ -109,30 +109,185 @@ function parseToolOutput(value: unknown) {
   }
 }
 
-function toolBaseLabel(toolName: string) {
-  switch (toolName) {
-    case 'list_known_resources':
-      return 'Checking available resources'
-    case 'run_dynamodb_operation':
-      return 'Checking data access'
-    case 'request_aws_access':
-      return 'Requesting access review'
-    case 'write_user_policy':
-      return 'Updating access policy'
-    case 'create_cognito_user':
-      return 'Creating user'
-    default:
-      return 'Running secure tool'
+function parseToolArguments(value: unknown) {
+  if (isRecord(value)) {
+    return value
+  }
+
+  if (typeof value !== 'string' || !value.trim()) {
+    return {}
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown
+    return recordValue(parsed)
+  } catch {
+    return {}
   }
 }
 
-function initialToolPresentation(toolName: string, status: ToolStatus) {
+function humanizeIdentifier(value: string) {
+  return value
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function bankResourceLabel(resourceKey: string) {
+  switch (resourceKey) {
+    case 'bank_customer_profiles':
+      return 'customer profile records'
+    case 'bank_balances':
+      return 'account balances'
+    case 'bank_transactions':
+      return 'transaction history'
+    case 'bank_operational_metrics':
+      return 'bank operational metrics'
+    case 'users_table':
+      return 'bank user directory'
+    case 'policy_table':
+      return 'access policy records'
+    case 'user_pool':
+      return 'bank sign-in users'
+    default:
+      return resourceKey ? humanizeIdentifier(resourceKey).toLowerCase() : 'bank records'
+  }
+}
+
+function operationLabel(operation: string) {
+  switch (operation) {
+    case 'get_item':
+      return 'reading'
+    case 'query_by_user_id':
+      return 'querying'
+    case 'scan':
+      return 'scanning'
+    case 'put_item':
+      return 'writing'
+    case 'update_item':
+      return 'updating'
+    case 'delete_item':
+      return 'deleting'
+    default:
+      return operation ? humanizeIdentifier(operation).toLowerCase() : 'accessing'
+  }
+}
+
+function pastOperationLabel(operation: string) {
+  switch (operation) {
+    case 'get_item':
+      return 'read'
+    case 'query_by_user_id':
+      return 'queried'
+    case 'scan':
+      return 'scanned'
+    case 'put_item':
+      return 'wrote'
+    case 'update_item':
+      return 'updated'
+    case 'delete_item':
+      return 'deleted'
+    default:
+      return operation ? humanizeIdentifier(operation).toLowerCase() : 'accessed'
+  }
+}
+
+function toolNameLabel(toolName: string) {
+  return humanizeIdentifier(toolName || 'bank workflow step')
+}
+
+function toolBaseLabel(toolName: string) {
+  switch (toolName) {
+    case 'list_known_resources':
+      return 'Loading bank data catalog'
+    case 'run_dynamodb_operation':
+      return 'Checking bank data access'
+    case 'request_aws_access':
+      return 'Requesting AgentZero bank access review'
+    case 'write_user_policy':
+      return 'Updating bank access policy'
+    case 'create_cognito_user':
+      return 'Creating bank application user'
+    default:
+      return `Running bank workflow step: ${toolNameLabel(toolName)}`
+  }
+}
+
+function bankCatalogDetail(resources: unknown) {
+  if (!Array.isArray(resources)) {
+    return 'Checking which bank data sources the agent can safely use.'
+  }
+
+  const labels = resources
+    .map((resource) => isRecord(resource) ? bankResourceLabel(stringValue(resource.resource_key)) : '')
+    .filter(Boolean)
+
+  if (!labels.length) {
+    return 'No bank data sources were returned.'
+  }
+
+  return `Available sources: ${Array.from(new Set(labels)).join(', ')}.`
+}
+
+function initialToolPresentation(toolName: string, status: ToolStatus, args: Record<string, unknown> = {}) {
+  const resourceKey = stringValue(args.resource_key)
+  const operation = stringValue(args.operation)
+  const group = stringValue(args.group)
+
   if (status === 'error') {
     return {
       label: toolBaseLabel(toolName),
       statusLabel: 'Failed',
       detail: 'The tool could not complete this step.',
       tone: 'failed' as ToolTone,
+    }
+  }
+
+  if (toolName === 'run_dynamodb_operation' && (resourceKey || operation)) {
+    return {
+      label: `${humanizeIdentifier(operationLabel(operation))} ${bankResourceLabel(resourceKey)}`,
+      statusLabel: status === 'completed' ? 'Complete' : 'Running',
+      detail: `Bank data source: ${bankResourceLabel(resourceKey)}. Operation: ${operation ? humanizeIdentifier(operation) : 'Access'}.`,
+      tone: status === 'completed' ? 'completed' as ToolTone : 'running' as ToolTone,
+    }
+  }
+
+  if (toolName === 'request_aws_access') {
+    return {
+      label: 'AgentZero is reviewing bank-data access',
+      statusLabel: status === 'completed' ? 'Complete' : 'Running',
+      detail: 'The broker is checking the request against the signed-in user role and free-text access policy.',
+      tone: status === 'completed' ? 'completed' as ToolTone : 'running' as ToolTone,
+    }
+  }
+
+  if (toolName === 'list_known_resources') {
+    return {
+      label: 'Loading bank data catalog',
+      statusLabel: status === 'completed' ? 'Complete' : 'Running',
+      detail: 'Checking available bank tables: profiles, balances, transactions, operational metrics, users, and policies.',
+      tone: status === 'completed' ? 'completed' as ToolTone : 'running' as ToolTone,
+    }
+  }
+
+  if (toolName === 'write_user_policy') {
+    const policyOperation = operation === 'delete_item' ? 'Deleting' : 'Writing'
+
+    return {
+      label: `${policyOperation} bank access policy`,
+      statusLabel: status === 'completed' ? 'Complete' : 'Running',
+      detail: 'Updating the policy record used for future access reviews.',
+      tone: status === 'completed' ? 'completed' as ToolTone : 'running' as ToolTone,
+    }
+  }
+
+  if (toolName === 'create_cognito_user') {
+    return {
+      label: 'Creating bank application user',
+      statusLabel: status === 'completed' ? 'Complete' : 'Running',
+      detail: group ? `Role group: ${humanizeIdentifier(group)}.` : 'Creating a Cognito user and matching bank directory row.',
+      tone: status === 'completed' ? 'completed' as ToolTone : 'running' as ToolTone,
     }
   }
 
@@ -213,14 +368,23 @@ function safeFailureDetail(output: Record<string, unknown>) {
 }
 
 function brokerDecisionDetail(output: Record<string, unknown>) {
-  const { body, reason } = resultDecision(output)
+  const { body, decision, reason } = resultDecision(output)
+  const parts = [
+    stringValue(decision.risk) ? `Risk: ${humanizeIdentifier(stringValue(decision.risk))}` : '',
+    stringValue(decision.authorization) ? `Authorization: ${humanizeIdentifier(stringValue(decision.authorization))}` : '',
+    typeof decision.duration_seconds === 'number'
+      ? `Duration: ${Math.round(decision.duration_seconds / 60)} min`
+      : '',
+  ].filter(Boolean)
 
   if (reason) {
-    return reason
+    return parts.length ? `${reason} ${parts.join(' • ')}.` : reason
   }
 
   if (output.ok === true || stringValue(body.status) === 'approved') {
-    return 'Temporary scoped access was approved.'
+    return parts.length
+      ? `Temporary scoped access was approved. ${parts.join(' • ')}.`
+      : 'Temporary scoped access was approved.'
   }
 
   return safeFailureDetail(output)
@@ -228,21 +392,24 @@ function brokerDecisionDetail(output: Record<string, unknown>) {
 
 function dataOperationDetail(output: Record<string, unknown>) {
   const response = recordValue(output.response)
+  const resourceKey = stringValue(output.resource_key)
+  const operation = stringValue(output.operation)
+  const prefix = `${humanizeIdentifier(pastOperationLabel(operation))} ${bankResourceLabel(resourceKey)}`
   const items = response.Items
 
   if (Array.isArray(items)) {
-    return `Returned ${items.length} ${items.length === 1 ? 'record' : 'records'}.`
+    return `${prefix}; returned ${items.length} ${items.length === 1 ? 'record' : 'records'}.`
   }
 
   if (isRecord(response.Item)) {
-    return 'Returned 1 record.'
+    return `${prefix}; returned 1 record.`
   }
 
   if (isRecord(response.Attributes)) {
-    return 'Updated and returned the changed record.'
+    return `${prefix}; returned the updated record.`
   }
 
-  return 'Operation completed.'
+  return `${prefix}; operation completed.`
 }
 
 function summarizeToolResult(toolName: string, status: ToolStatus, output: Record<string, unknown>) {
@@ -280,19 +447,22 @@ function summarizeToolResult(toolName: string, status: ToolStatus, output: Recor
     const resources = Array.isArray(output.resources) ? output.resources.length : 0
 
     return {
-      label: 'Resource catalog checked',
+      label: 'Bank data catalog loaded',
       statusLabel: ok ? 'Complete' : 'Failed',
       detail: ok
-        ? `${resources} ${resources === 1 ? 'resource is' : 'resources are'} available.`
+        ? `${resources} ${resources === 1 ? 'source is' : 'sources are'} available. ${bankCatalogDetail(output.resources)}`
         : safeFailureDetail(output),
       tone: ok ? 'completed' as ToolTone : 'failed' as ToolTone,
     }
   }
 
   if (toolName === 'run_dynamodb_operation') {
+    const resourceKey = stringValue(output.resource_key)
+    const operation = stringValue(output.operation)
+
     if (ok) {
       return {
-        label: 'Data operation complete',
+        label: `${humanizeIdentifier(pastOperationLabel(operation))} ${bankResourceLabel(resourceKey)}`,
         statusLabel: 'Approved',
         detail: dataOperationDetail(output),
         tone: 'approved' as ToolTone,
@@ -301,15 +471,15 @@ function summarizeToolResult(toolName: string, status: ToolStatus, output: Recor
 
     if (denied) {
       return {
-        label: 'Data access blocked',
+        label: `${humanizeIdentifier(operationLabel(operation))} ${bankResourceLabel(resourceKey)} blocked`,
         statusLabel: 'Denied',
-        detail: safeFailureDetail(output),
+        detail: `${bankResourceLabel(resourceKey)} access was not granted for ${operation ? humanizeIdentifier(operation).toLowerCase() : 'this operation'}.`,
         tone: 'denied' as ToolTone,
       }
     }
 
     return {
-      label: 'Data operation failed',
+      label: `${humanizeIdentifier(operationLabel(operation))} ${bankResourceLabel(resourceKey)} failed`,
       statusLabel: 'Failed',
       detail: safeFailureDetail(output),
       tone: 'failed' as ToolTone,
@@ -319,7 +489,7 @@ function summarizeToolResult(toolName: string, status: ToolStatus, output: Recor
   if (toolName === 'write_user_policy') {
     if (ok) {
       return {
-        label: 'Policy update complete',
+        label: 'Bank access policy updated',
         statusLabel: 'Approved',
         detail: 'The access policy was updated.',
         tone: 'approved' as ToolTone,
@@ -327,7 +497,7 @@ function summarizeToolResult(toolName: string, status: ToolStatus, output: Recor
     }
 
     return {
-      label: denied ? 'Policy update blocked' : 'Policy update failed',
+      label: denied ? 'Bank policy update blocked' : 'Bank policy update failed',
       statusLabel: denied ? 'Denied' : 'Failed',
       detail: safeFailureDetail(output),
       tone: denied ? 'denied' as ToolTone : 'failed' as ToolTone,
@@ -335,17 +505,19 @@ function summarizeToolResult(toolName: string, status: ToolStatus, output: Recor
   }
 
   if (toolName === 'create_cognito_user') {
+    const group = stringValue(output.group)
+
     if (ok) {
       return {
-        label: 'User creation complete',
+        label: 'Bank application user created',
         statusLabel: 'Approved',
-        detail: 'The application user was created or updated.',
+        detail: group ? `Created or updated a ${humanizeIdentifier(group)} sign-in user.` : 'The bank application user was created or updated.',
         tone: 'approved' as ToolTone,
       }
     }
 
     return {
-      label: denied ? 'User creation blocked' : 'User creation failed',
+      label: denied ? 'Bank user creation blocked' : 'Bank user creation failed',
       statusLabel: denied ? 'Denied' : 'Failed',
       detail: safeFailureDetail(output),
       tone: denied ? 'denied' as ToolTone : 'failed' as ToolTone,
@@ -1028,12 +1200,13 @@ export function useAgentChat() {
 
     const name = stringValue(data.tool_name) || 'tool_call'
     const status = stringValue(data.status) === 'completed' ? 'completed' : 'in_progress'
+    const args = parseToolArguments(data.arguments)
 
     upsertTool(turn, {
       id: stringValue(message.id) || stringValue(item.id) || createId('tool'),
       name,
       status,
-      ...initialToolPresentation(name, status),
+      ...initialToolPresentation(name, status, args),
     })
   }
 

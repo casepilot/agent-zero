@@ -322,7 +322,7 @@ onBeforeUnmount(() => {
                             class="size-4 shrink-0"
                             :class="toolStatusClass(tool)"
                           />
-                          <span class="truncate font-medium">{{ tool.label }}</span>
+                          <span class="min-w-0 text-sm font-medium leading-5">{{ tool.label }}</span>
                         </span>
                         <span
                           class="flex shrink-0 items-center gap-1.5 text-xs font-medium"
