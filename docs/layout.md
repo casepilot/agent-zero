@@ -15,9 +15,12 @@ agent-zero/
   .gitignore
   AGENTS.md
   README.md
-  .codex/
-    commands/
-      deploy-frontend.md
+  .agents/
+    skills/
+      deploy-frontend/
+        SKILL.md
+        agents/
+          openai.yaml
   .codex-automation/
     locks/
       layout-refresh.lock/
@@ -280,21 +283,22 @@ Current scripts:
 - `automation/install_launchd.sh` installs the local launchd jobs.
 - `launchd/*.plist` defines the local layout-refresh and git-sync launch agents.
 
-### `.codex/`
+### `.agents/`
 
-Project-local Codex configuration.
+Project-local Codex skills.
 
 Current files:
 
-- `commands/deploy-frontend.md` is the repo-local frontend deploy slash command.
+- `skills/deploy-frontend/SKILL.md` tells Codex how to deploy the frontend hosting path.
+- `skills/deploy-frontend/agents/openai.yaml` contains UI metadata for the skill.
 
-Use it from this repo with:
+Use it from this repo by telling Codex:
 
 ```text
-/deploy-frontend
+deploy frontend
 ```
 
-It runs `scripts/deploy_frontend.sh`.
+The skill runs `scripts/deploy_frontend.sh`.
 
 ### `.codex-automation/`
 

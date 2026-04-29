@@ -20,12 +20,12 @@ cdk bootstrap --profile openai-hackathon
 
 The target AWS account is `338375260114` and the target region is `ap-southeast-2`.
 
-## Frontend Deploy Slash Command
+## Frontend Deploy Skill
 
-This repo has a local Codex command for the frontend deploy flow:
+This repo has a local Codex skill for the frontend deploy flow. From this repo, tell Codex:
 
 ```text
-/deploy-frontend
+deploy frontend
 ```
 
 It runs:
