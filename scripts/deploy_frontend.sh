@@ -7,6 +7,7 @@ INFRA_DIR="$REPO_ROOT/infra"
 
 STACK_NAME="${STACK_NAME:-IamAgentStack}"
 AWS_PROFILE_NAME="${AWS_PROFILE_NAME:-openai-hackathon}"
+AWS_REGION_NAME="${AWS_REGION_NAME:-ap-southeast-2}"
 
 if [[ ! -d "$INFRA_DIR" ]]; then
   echo "Could not find infra directory at: $INFRA_DIR" >&2
@@ -38,7 +39,13 @@ fi
 
 echo "Deploying $STACK_NAME from $INFRA_DIR"
 echo "AWS profile: $AWS_PROFILE_NAME"
+echo "AWS region: $AWS_REGION_NAME"
 echo "Amplify app root: app"
+
+export AWS_PROFILE="$AWS_PROFILE_NAME"
+export AWS_REGION="$AWS_REGION_NAME"
+export AWS_DEFAULT_REGION="$AWS_REGION_NAME"
+export AWS_SDK_LOAD_CONFIG=1
 
 cd "$INFRA_DIR"
 exec cdk deploy "$STACK_NAME" --profile "$AWS_PROFILE_NAME" --app ".venv/bin/python app.py" "$@"
