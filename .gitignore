@@ -1,4 +1,26 @@
-.DS_Store
+# Local env files
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+.pytest_cache/
+.venv/
+*.egg-info/
+
+# Node
+node_modules/
+
+# Logs
+logs/
+*.log
 
 # Local automation runtime files.
 .codex-automation/
+
+# OS/editor files
+.DS_Store
+.fleet/
+.idea/
+.history/

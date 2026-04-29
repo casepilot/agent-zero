@@ -57,7 +57,6 @@ agent-zero/
 
   infra/
     .gitignore
-    README.md
     app.py
     cdk.json
     requirements.txt
@@ -71,6 +70,7 @@ agent-zero/
       constructs/
         __init__.py
         auth.py
+        broker_api.py
         data.py
         frontend_hosting.py
     tests/
@@ -78,6 +78,20 @@ agent-zero/
       unit/
         __init__.py
         test_infra_stack.py
+
+  services/
+    agent-api/
+      src/
+        agent_api/
+          __init__.py
+          handler.py
+    broker-api/
+      src/
+        broker_api/
+          __init__.py
+          handlers/
+            __init__.py
+            credentials.py
 
   scripts/
     bootstrap_demo_users.py
@@ -127,6 +141,7 @@ Current constructs:
 
 - `auth.py` creates the Cognito user pool, app client, and `admin` and `employee` groups.
 - `data.py` creates `users-table` and `policy-table` DynamoDB tables.
+- `broker_api.py` creates the Broker Lambda, Agent Lambda, API Gateway routes, and IAM auth wiring.
 - `frontend_hosting.py` creates the Amplify app and `main` branch for the Nuxt app.
 
 Current config:
@@ -135,10 +150,31 @@ Current config:
 
 Current tests:
 
-- `infra/tests/unit/test_infra_stack.py` checks Cognito, DynamoDB, and Amplify resources.
+- `infra/tests/unit/test_infra_stack.py` checks Cognito, DynamoDB, API Gateway, Lambda, IAM, and Amplify resources.
 
 Add new infrastructure as constructs inside `IamAgentStack`.
 Do not add another stack unless the user asks for it.
+
+### `services/agent-api/`
+
+Lambda-facing service for the user-facing agent route.
+
+Current state:
+
+- Receives Cognito-authenticated `POST /agent` requests.
+- Calls the Broker API `GET /credentials` endpoint using IAM-signed requests.
+- Returns the broker response to the caller.
+
+### `services/broker-api/`
+
+Backend service for credential decisions.
+
+Current state:
+
+- Exposes a basic `GET /credentials` Lambda handler.
+- Requires IAM-authenticated caller context from API Gateway.
+- Loads the OpenAI key from Secrets Manager to prove broker plumbing.
+- Returns request context only. LLM review and STS issuance are not implemented yet.
 
 ### `scripts/`
 
@@ -168,7 +204,13 @@ agent-zero/
   services/
     shared/
     broker-api/
-    mcp-server/
+      src/
+        broker_api/
+          auth/
+          aws/
+          data/
+          llm/
+          policy/
 
   demo-data/
     customers.json
@@ -196,29 +238,19 @@ Use it for:
 - error classes
 - logging helpers
 
-### `services/broker-api/`
+### More Broker API Modules
 
-Planned main backend service.
-
-It should handle:
+The broker still needs modules for:
 
 - human and agent auth context
 - policy lookup
+- resource catalog lookup
 - LLM review
 - deterministic validation
-- STS session policy creation
+- session policy generation
 - `AssumeRole`
 - console URL generation
 - access request logging
-
-### `services/mcp-server/`
-
-Planned MCP-facing service for AI agents.
-
-It should stay thin.
-
-It should call the Broker API, receive approved temporary credentials, and then
-perform only the approved tool action.
 
 ### `demo-data/`
 

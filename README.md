@@ -20,9 +20,9 @@ cdk bootstrap --profile openai-hackathon
 
 The target AWS account is `338375260114` and the target region is `ap-southeast-2`.
 
-## Bootstrap Demo Data
+## Bootstrap Demo User Data First
 
-After the CDK deploy finishes, run the demo user bootstrap from the repo root:
+After the CDK deploy finishes, bootstrap the demo user data from the repo root before running the demo:
 
 ```bash
 python3 scripts/bootstrap_demo_users.py bootstrap --profile openai-hackathon

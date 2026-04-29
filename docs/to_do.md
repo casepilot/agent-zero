@@ -6,10 +6,10 @@
 4. [x] Add Cognito user pool, app client, and groups for `admin` and `employee`.
 5. [ ] Add broad target IAM roles for DynamoDB, S3, and future AWS resource access.
 6. [ ] Create `services/shared/` for shared types, schemas, errors, and logging helpers.
-7. [ ] Create `services/broker-api/` with a basic Lambda handler.
-8. [ ] Wire the Broker API Lambda behind API Gateway.
-9. [ ] Add Cognito auth for human requests to the Broker API.
-10. [ ] Add API key auth for agent requests to the Broker API.
+7. [x] Create `services/broker-api/` with a basic Lambda handler.
+8. [x] Wire the Broker API Lambda behind API Gateway.
+9. [x] Add Cognito auth for human requests to the Agent API.
+10. [x] Add IAM auth for Agent Lambda requests to the Broker API credentials endpoint.
 11. [ ] Add principal and policy lookup from DynamoDB.
 12. [ ] Add a resource catalog that describes stack resources and their ARNs.
 13. [ ] Add the LLM reviewer with structured JSON output.
@@ -18,8 +18,8 @@
 16. [ ] Add `sts:AssumeRole` with the inline session policy.
 17. [ ] Add AWS console sign-in URL generation for human users.
 18. [ ] Add broker-side request logging to DynamoDB.
-19. [ ] Create `services/mcp-server/` with a Lambda Function URL.
-20. [ ] Add MCP tools that request broker access and then perform approved DynamoDB actions.
+19. [x] Create `services/agent-api/` with a Lambda behind API Gateway.
+20. [ ] Add agent tools that request broker access and then perform approved DynamoDB actions.
 21. [x] Create the single Nuxt app in `app/`. Skeleton created with Tailwind CSS and shadcn-vue.
 22. [ ] Add Nuxt admin screens for creating humans, agents, and free-text policies.
 23. [ ] Add Nuxt employee screens for requesting access and receiving console URLs.
