@@ -13,6 +13,8 @@ AwsAction = Literal[
     "dynamodb:UpdateItem",
     "dynamodb:DeleteItem",
 ]
+RiskLevel = Literal["low", "medium", "high", "critical"]
+AuthorizationLevel = Literal["low", "medium", "high"]
 
 
 class AccessGrant(BaseModel):
@@ -27,6 +29,8 @@ class AccessDecision(BaseModel):
 
     approved: bool
     reason: str = Field(min_length=1, max_length=1000)
+    risk: RiskLevel
+    authorization: AuthorizationLevel
     duration_seconds: int = Field(ge=900, le=3600)
     grants: list[AccessGrant] = Field(default_factory=list, max_length=5)
 

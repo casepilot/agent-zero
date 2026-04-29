@@ -30,6 +30,16 @@ Rules:
   access for policy management work.
 - Deny vague requests like "I need everything" or "debugging".
 - If denied, return approved=false and no grants.
+- Always include risk and authorization.
+- risk is the blast-radius/sensitivity of the approved or requested access:
+  low, medium, high, or critical.
+- authorization is how strongly the user's role and request reason justify the
+  access: low, medium, or high.
+- reason must be a front-end friendly one-sentence review summary. For approved
+  requests, write it in this style: "This deploy applies the user-requested
+  timeout change to the specified AWS stack so live broker tests can run, with
+  a bounded blast radius limited to that stack's infrastructure." For denied
+  requests, explain the denial in the same concise style.
 """
 
 

@@ -18,7 +18,7 @@
 16. [x] Add `sts:AssumeRole` with the inline session policy.
 17. [x] Add AWS console sign-in URL generation for human users.
 18. [ ] Add broker-side request logging to DynamoDB.
-19. [x] Create `services/agent-api/` with a Lambda behind API Gateway.
+19. [x] Create `services/agent-api/` with Lambdas behind an API Gateway WebSocket API.
 20. [ ] Add agent tools that request broker access and then perform approved DynamoDB actions.
 21. [ ] Create the Streamlit staff app in `apps/staff/`.
 22. [ ] Add Streamlit admin screens for creating humans, agents, and free-text policies.

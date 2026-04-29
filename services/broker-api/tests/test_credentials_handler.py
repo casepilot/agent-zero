@@ -49,6 +49,8 @@ def test_handler_returns_credentials_and_console_url_for_staff(monkeypatch):
         lambda **kwargs: AccessDecision(
             approved=True,
             reason="Admin policy update is allowed.",
+            risk="medium",
+            authorization="high",
             duration_seconds=900,
             grants=[
                 {
@@ -93,4 +95,6 @@ def test_handler_returns_credentials_and_console_url_for_staff(monkeypatch):
     body = json.loads(result["body"])
     assert result["statusCode"] == 200
     assert body["credentials"]["access_key_id"] == "AKIA"
+    assert body["decision"]["risk"] == "medium"
+    assert body["decision"]["authorization"] == "high"
     assert body["console_login_url"].startswith("https://signin.aws.amazon.com")

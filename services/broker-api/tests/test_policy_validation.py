@@ -25,6 +25,8 @@ def test_support_can_get_customer_data_read_access():
     decision = AccessDecision(
         approved=True,
         reason="Support case is specific and allowed.",
+        risk="medium",
+        authorization="high",
         duration_seconds=900,
         grants=[
             {
@@ -47,6 +49,8 @@ def test_external_customer_cannot_get_analytics_data():
     decision = AccessDecision(
         approved=True,
         reason="Customer wants analytics.",
+        risk="high",
+        authorization="low",
         duration_seconds=900,
         grants=[{"resource_key": "analytics_data", "actions": ["dynamodb:Scan"]}],
     )
@@ -63,6 +67,8 @@ def test_analyst_cannot_get_general_customer_data():
     decision = AccessDecision(
         approved=True,
         reason="Analyst wants customer data.",
+        risk="high",
+        authorization="low",
         duration_seconds=900,
         grants=[{"resource_key": "customer_data", "actions": ["dynamodb:Scan"]}],
     )
@@ -79,6 +85,8 @@ def test_non_admin_cannot_write_policy_table():
     decision = AccessDecision(
         approved=True,
         reason="Support wants to edit a policy.",
+        risk="high",
+        authorization="low",
         duration_seconds=900,
         grants=[
             {"resource_key": "policy_table", "actions": ["dynamodb:UpdateItem"]}
@@ -97,6 +105,8 @@ def test_admin_can_write_policy_table():
     decision = AccessDecision(
         approved=True,
         reason="Admin needs to update a user policy.",
+        risk="medium",
+        authorization="high",
         duration_seconds=900,
         grants=[
             {"resource_key": "policy_table", "actions": ["dynamodb:UpdateItem"]}
@@ -115,6 +125,8 @@ def test_schema_rejects_unknown_resource_and_excess_duration():
         AccessDecision(
             approved=True,
             reason="Invalid resource.",
+            risk="medium",
+            authorization="low",
             duration_seconds=7200,
             grants=[{"resource_key": "unknown", "actions": ["dynamodb:GetItem"]}],
         )
@@ -132,6 +144,8 @@ def test_session_policy_uses_exact_catalog_arns():
     decision = AccessDecision(
         approved=True,
         reason="Specific support request.",
+        risk="medium",
+        authorization="high",
         duration_seconds=900,
         grants=[{"resource_key": "customer_data", "actions": ["dynamodb:GetItem"]}],
     )

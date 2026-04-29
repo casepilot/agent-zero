@@ -43,6 +43,10 @@ def test_support_agent_amplify_resources_created():
                         "Name": "NITRO_PRESET",
                         "Value": "aws_amplify",
                     },
+                    {
+                        "Name": "NUXT_PUBLIC_AGENT_WS_URL",
+                        "Value": assertions.Match.any_value(),
+                    },
                 ],
             ),
         },
@@ -108,8 +112,12 @@ def test_agent_only_credentials_api_created():
     template = assertions.Template.from_stack(stack)
 
     template.resource_count_is("AWS::ApiGateway::RestApi", 1)
-    template.resource_count_is("AWS::ApiGateway::Method", 2)
-    template.resource_count_is("AWS::Lambda::Function", 2)
+    template.resource_count_is("AWS::ApiGateway::Method", 1)
+    template.resource_count_is("AWS::ApiGatewayV2::Api", 1)
+    template.resource_count_is("AWS::ApiGatewayV2::Route", 4)
+    template.resource_count_is("AWS::ApiGatewayV2::Stage", 1)
+    template.resource_count_is("AWS::ApiGatewayV2::Authorizer", 1)
+    template.resource_count_is("AWS::Lambda::Function", 4)
     template.has_resource_properties(
         "AWS::Lambda::Function",
         {
@@ -130,11 +138,41 @@ def test_agent_only_credentials_api_created():
     template.has_resource_properties(
         "AWS::Lambda::Function",
         {
-            "FunctionName": "UserAgent",
-            "Handler": "agent_api.handler.handler",
+            "FunctionName": "UserAgentWebSocketAuthorizer",
+            "Handler": "agent_api.authorizer.handler",
             "Environment": {
                 "Variables": assertions.Match.object_like(
-                    {"OPENAI_SECRET_NAME": "openai-key"}
+                    {
+                        "USER_POOL_ID": assertions.Match.any_value(),
+                        "USER_POOL_CLIENT_ID": assertions.Match.any_value(),
+                    }
+                ),
+            },
+        },
+    )
+    template.has_resource_properties(
+        "AWS::Lambda::Function",
+        {
+            "FunctionName": "UserAgentWebSocket",
+            "Handler": "agent_api.handler.route_handler",
+            "Environment": {
+                "Variables": assertions.Match.object_like(
+                    {"AGENT_WORKER_FUNCTION_NAME": assertions.Match.any_value()}
+                ),
+            },
+        },
+    )
+    template.has_resource_properties(
+        "AWS::Lambda::Function",
+        {
+            "FunctionName": "UserAgentWorker",
+            "Handler": "agent_api.handler.worker_handler",
+            "Environment": {
+                "Variables": assertions.Match.object_like(
+                    {
+                        "CREDENTIALS_URL": assertions.Match.any_value(),
+                        "OPENAI_SECRET_NAME": "openai-key",
+                    }
                 ),
             },
         },
@@ -167,11 +205,34 @@ def test_agent_only_credentials_api_created():
         },
     )
     template.has_resource_properties(
-        "AWS::ApiGateway::Method",
+        "AWS::ApiGatewayV2::Api",
         {
-            "HttpMethod": "POST",
-            "AuthorizationType": "COGNITO_USER_POOLS",
+            "Name": "iam-agent-agent-api",
+            "ProtocolType": "WEBSOCKET",
+            "RouteSelectionExpression": "$request.body.action",
+        },
+    )
+    template.has_resource_properties(
+        "AWS::ApiGatewayV2::Authorizer",
+        {
+            "AuthorizerType": "REQUEST",
+            "IdentitySource": ["route.request.querystring.token"],
+            "Name": "agent-websocket-cognito-authorizer",
+        },
+    )
+    template.has_resource_properties(
+        "AWS::ApiGatewayV2::Route",
+        {
+            "RouteKey": "$connect",
+            "AuthorizationType": "CUSTOM",
             "AuthorizerId": assertions.Match.any_value(),
+        },
+    )
+    template.has_resource_properties(
+        "AWS::ApiGatewayV2::Route",
+        {
+            "RouteKey": "requestAccess",
+            "AuthorizationType": "NONE",
         },
     )
     template.has_resource_properties(
@@ -221,6 +282,24 @@ def test_agent_only_credentials_api_created():
                             {
                                 "Action": "sts:AssumeRole",
                                 "Effect": "Allow",
+                            }
+                        )
+                    ]
+                ),
+            },
+        },
+    )
+    template.has_resource_properties(
+        "AWS::IAM::Policy",
+        {
+            "PolicyDocument": {
+                "Statement": assertions.Match.array_with(
+                    [
+                        assertions.Match.object_like(
+                            {
+                                "Action": "execute-api:ManageConnections",
+                                "Effect": "Allow",
+                                "Resource": assertions.Match.any_value(),
                             }
                         )
                     ]

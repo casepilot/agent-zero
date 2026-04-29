@@ -50,6 +50,8 @@ def get_openai_key() -> str:
             secret_json.get("OPENAI_API_KEY")
             or secret_json.get("openai_api_key")
             or secret_json.get("api_key")
+            or secret_json.get("api-key")
+            or secret_json.get("apiKey")
             or secret_string
         )
     return _openai_key
@@ -73,6 +75,13 @@ def response(status_code: int, body: dict[str, Any]) -> dict[str, Any]:
 
 def bool_param(value: str | None) -> bool:
     return str(value or "").lower() in {"1", "true", "yes"}
+
+
+def safe_error_message(error: Exception) -> str:
+    message = str(error).splitlines()[0]
+    if "Incorrect API key provided" in message:
+        return "OpenAI authentication failed."
+    return message
 
 
 def load_policy(user_id: str) -> str | None:
@@ -182,9 +191,9 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             aws_request_id=aws_request_id,
             user_id=user_id,
             error_type=type(error).__name__,
-            error=str(error),
+            error=safe_error_message(error),
         )
-        return response(500, {"error": "llm_failed", "message": str(error)})
+        return response(500, {"error": "llm_failed", "message": safe_error_message(error)})
 
     if not decision.approved:
         log(
