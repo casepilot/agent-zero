@@ -11,7 +11,8 @@ export default defineNuxtConfig({
     public: {
       awsRegion: process.env.NUXT_PUBLIC_AWS_REGION || '',
       cognitoUserPoolId: process.env.NUXT_PUBLIC_COGNITO_USER_POOL_ID || '',
-      cognitoUserPoolClientId: process.env.NUXT_PUBLIC_COGNITO_USER_POOL_CLIENT_ID || ''
+      cognitoUserPoolClientId: process.env.NUXT_PUBLIC_COGNITO_USER_POOL_CLIENT_ID || '',
+      agentWsUrl: process.env.NUXT_PUBLIC_AGENT_WS_URL || ''
     }
   },
   shadcn: {
