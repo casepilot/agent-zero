@@ -96,10 +96,14 @@ agent-zero/
 
   services/
     agent-api/
+      requirements.txt
       src/
         agent_api/
           __init__.py
+          authorizer.py
           handler.py
+      tests/
+        test_handler.py
     broker-api/
       requirements.txt
       src/
@@ -148,6 +152,7 @@ generated and should not guide new feature placement.
 ```text
 agent-zero/
   .DS_Store
+  .env
   .codex-automation/
     locks/
       layout-refresh.lock/
@@ -162,6 +167,14 @@ agent-zero/
     node_modules/
     .nuxt/
     .output/
+  infra/
+    .venv/
+    iam_agent/
+      __pycache__/
+      config/
+        __pycache__/
+      constructs/
+        __pycache__/
 ```
 
 Other ignored local folders may appear after running tools, such as
@@ -236,11 +249,20 @@ Current constructs:
 - `broker_api.py` creates:
   - the broad broker credentials role used with scoped STS session policies
   - the Broker Lambda named `AgentZero`
-  - the Agent Lambda named `UserAgent`
-  - one API Gateway REST API
+  - the Agent WebSocket authorizer Lambda named `UserAgentWebSocketAuthorizer`
+  - the Agent WebSocket route Lambda named `UserAgentWebSocket`
+  - the Agent worker Lambda named `UserAgentWorker`
+  - one API Gateway REST API for the Broker API
   - `GET /credentials` with IAM auth
-  - `POST /agent` with Cognito auth
-  - permissions for the agent Lambda to call the broker credentials endpoint
+  - one API Gateway WebSocket API for the Agent API
+  - a custom WebSocket authorizer that reads a Cognito access token from the
+    `token` query string
+  - WebSocket routes for `$connect`, `$disconnect`, `$default`, and
+    `requestAccess`
+  - permissions for the route Lambda to invoke the worker Lambda
+  - permissions for the worker Lambda to call the broker credentials endpoint
+  - permissions for the worker Lambda to post messages back to WebSocket
+    clients
 - `frontend_hosting.py` creates the Amplify app and `main` branch for the Nuxt
   app.
 
@@ -259,18 +281,32 @@ Do not add another stack unless the user asks for it.
 
 ### `services/agent-api/`
 
-Lambda-facing service for the user-facing agent route.
+Lambda-facing service for the user-facing Agent API WebSocket route.
 
 Current state:
 
-- Handles Cognito-authenticated `POST /agent` requests.
-- Reads the Cognito `sub` from API Gateway authorizer claims.
-- Parses the request body for the access reason and staff flag.
-- Calls the Broker API `GET /credentials` endpoint using IAM-signed requests.
-- Returns the broker response to the caller.
-- Loads the OpenAI secret as a plumbing check.
+- `authorizer.py` validates Cognito access tokens from the WebSocket `token`
+  query string.
+- The authorizer adds the trusted Cognito `sub` as `user_id` in the API Gateway
+  authorizer context.
+- `handler.py` contains the WebSocket route handler, worker handler, and a
+  compatibility `handler()` dispatcher.
+- The route handler accepts `$connect`, `$disconnect`, `$default`, and
+  `requestAccess` events.
+- `requestAccess` parses the WebSocket body and invokes the worker Lambda
+  asynchronously.
+- The worker streams `ack`, `delta`, `broker_result`, and `done` messages back
+  to the WebSocket client.
+- The worker calls the Broker API `GET /credentials` endpoint using
+  IAM-signed requests.
+- The broker call uses the trusted Cognito `sub` from the authorizer context,
+  not a caller-supplied body value.
+- The worker loads the OpenAI secret as a plumbing check.
+- `tests/test_handler.py` checks trusted authorizer identity handling and worker
+  streaming behavior.
 
-This service does not yet run the customer support LLM agent tools.
+This service does not yet run the customer support LLM agent tools or perform
+approved DynamoDB actions after credentials are issued.
 
 ### `services/broker-api/`
 

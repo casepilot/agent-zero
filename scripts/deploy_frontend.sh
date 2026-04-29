@@ -25,6 +25,12 @@ if ! command -v cdk >/dev/null 2>&1; then
   exit 127
 fi
 
+if ! command -v aws >/dev/null 2>&1; then
+  echo "aws is not installed or not on PATH." >&2
+  echo "Install the AWS CLI, then rerun this script." >&2
+  exit 127
+fi
+
 VENV_PYTHON="$INFRA_DIR/.venv/bin/python"
 
 if [[ ! -x "$VENV_PYTHON" ]]; then
@@ -47,5 +53,9 @@ export AWS_REGION="$AWS_REGION_NAME"
 export AWS_DEFAULT_REGION="$AWS_REGION_NAME"
 export AWS_SDK_LOAD_CONFIG=1
 
+echo "Exporting temporary AWS credentials from profile"
+credential_exports="$(aws configure export-credentials --profile "$AWS_PROFILE_NAME" --format env)"
+eval "$credential_exports"
+
 cd "$INFRA_DIR"
-exec cdk deploy "$STACK_NAME" --profile "$AWS_PROFILE_NAME" --app ".venv/bin/python app.py" "$@"
+exec cdk deploy "$STACK_NAME" --app ".venv/bin/python app.py" "$@"
