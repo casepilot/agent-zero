@@ -2,34 +2,26 @@
 
 This file describes the current repo layout.
 
-It also lists planned or missing folders that are part of the product plan but
-do not exist yet.
+It separates checked-in project files from local generated files. Use this file
+when adding new folders or deciding where new code should live.
 
-## Current Layout
+## Current Source Layout
 
-This tree shows the useful project source files and local automation files.
-Generated dependency and build folders are listed separately below.
+This tree shows the useful checked-in source, docs, tests, and automation.
+Generated dependency and build folders are listed later.
 
 ```text
 agent-zero/
   .gitignore
   AGENTS.md
   README.md
+
   .agents/
     skills/
       deploy-frontend/
         SKILL.md
         agents/
           openai.yaml
-  .codex-automation/
-    locks/
-      layout-refresh.lock/
-    logs/
-      git-sync.err.log
-      git-sync.out.log
-      layout-last-message.txt
-      layout-refresh.err.log
-      layout-refresh.out.log
 
   app/
     .gitignore
@@ -61,9 +53,9 @@ agent-zero/
       lib/
         utils.ts
       pages/
-        [chatId].vue
         index.vue
         login.vue
+        [chatId].vue
       plugins/
 
   docs/
@@ -141,21 +133,40 @@ agent-zero/
       com.agent-zero.layout-refresh.plist
 ```
 
-## Generated Or Local-Only Layout
+## Local Or Generated Layout
 
-These folders and files may exist in a local checkout. They are not product
-source and should not guide new feature placement.
+These folders and files may exist in a local checkout. They are ignored or
+generated and should not guide new feature placement.
 
 ```text
 agent-zero/
   .DS_Store
+  .codex-automation/
+    locks/
+      layout-refresh.lock/
+    logs/
+      git-sync.err.log
+      git-sync.out.log
+      layout-last-message.txt
+      layout-refresh.err.log
+      layout-refresh.out.log
   app/
     node_modules/
     .nuxt/
     .output/
 ```
 
+Other ignored local folders may appear after running tools, such as
+`__pycache__/`, `.pytest_cache/`, `.venv/`, or `infra/cdk.out/`.
+
 ## Current Folder Roles
+
+### Root Files
+
+- `AGENTS.md` contains local instructions for Codex and future agents.
+- `README.md` is the repo entry point.
+- `.gitignore` ignores local env files, Python caches, Node dependencies,
+  logs, local automation runtime files, and editor files.
 
 ### `app/`
 
@@ -166,10 +177,14 @@ Current state:
 - Nuxt 4 app using pnpm.
 - Tailwind CSS and shadcn-vue are configured.
 - `lucide-vue-next` is used for icons.
-- `app/app/pages/index.vue` is the themed empty home state.
-- `app/app/pages/login.vue` is a static login screen that routes to `/flight-change` on submit.
-- `app/app/pages/[chatId].vue` is the desktop chat interface with local simulated streaming.
-- `app/app/components/ui/` contains shadcn-style button, input, and label components.
+- `app/app/pages/index.vue` is the themed empty home state with a link to
+  `/flight-change`.
+- `app/app/pages/login.vue` is a static login screen that routes to
+  `/flight-change` on submit.
+- `app/app/pages/[chatId].vue` is the desktop chat interface with seeded chat
+  routes and local simulated streaming.
+- `app/app/components/ui/` contains shadcn-style button, input, and label
+  components.
 - `app/app/lib/utils.ts` contains the shared `cn()` class helper.
 - `app/app/plugins/` exists but is empty.
 
@@ -182,7 +197,8 @@ Project docs.
 
 Current docs:
 
-- `project.md` explains the product, access model, security model, and demo story.
+- `project.md` explains the product, access model, security model, and demo
+  story.
 - `to_do.md` is the source of truth for build status and next work.
 - `layout.md` describes the repo layout.
 
@@ -194,7 +210,8 @@ The stack is `IamAgentStack` and the project currently uses one CDK stack.
 
 Current constructs:
 
-- `auth.py` creates the Cognito user pool, app client, and `admin` and `employee` groups.
+- `auth.py` creates the Cognito user pool, app client, and `admin` and
+  `employee` groups.
 - `data.py` creates four DynamoDB tables:
   - `users-table`
   - `policy-table`
@@ -208,15 +225,18 @@ Current constructs:
   - `GET /credentials` with IAM auth
   - `POST /agent` with Cognito auth
   - permissions for the agent Lambda to call the broker credentials endpoint
-- `frontend_hosting.py` creates the Amplify app and `main` branch for the Nuxt app.
+- `frontend_hosting.py` creates the Amplify app and `main` branch for the Nuxt
+  app.
 
 Current config:
 
-- `resources.py` stores the project name, AWS account, AWS region, Cognito group names, and Amplify app root.
+- `resources.py` stores the project name, AWS account, AWS region, Cognito group
+  names, and Amplify app root.
 
 Current tests:
 
-- `infra/tests/unit/test_infra_stack.py` checks Cognito, DynamoDB, API Gateway, Lambda, IAM, STS, and Amplify resources.
+- `infra/tests/unit/test_infra_stack.py` checks Cognito, DynamoDB, API Gateway,
+  Lambda, IAM, STS, and Amplify resources.
 
 Add new infrastructure as constructs inside `IamAgentStack`.
 Do not add another stack unless the user asks for it.
@@ -244,12 +264,15 @@ Current state:
 
 - Exposes the `GET /credentials` Lambda handler.
 - Requires IAM-authenticated caller context from API Gateway.
-- Rejects caller-supplied resource choices. The broker chooses resources from its catalog.
+- Rejects caller-supplied resource choices. The broker chooses resources from
+  its catalog.
 - Loads a principal policy from `policy-table`.
 - Loads the OpenAI key from Secrets Manager.
-- Builds a resource catalog for `customer_data`, `analytics_data`, and `policy_table`.
+- Builds a resource catalog for `customer_data`, `analytics_data`, and
+  `policy_table`.
 - Calls an OpenAI reviewer for a structured access decision.
-- Validates decisions with deterministic allowlists, deny rules, and schema checks.
+- Validates decisions with deterministic allowlists, deny rules, and schema
+  checks.
 - Builds a scoped inline STS session policy for approved grants.
 - Calls `sts:AssumeRole` through the broker credentials role.
 - Returns temporary credentials for approved requests.
@@ -258,7 +281,8 @@ Current state:
 Current modules:
 
 - `handlers/credentials.py` contains the Lambda entry point and request flow.
-- `data/resource_catalog.py` defines broker-known resources and prompt formatting.
+- `data/resource_catalog.py` defines broker-known resources and prompt
+  formatting.
 - `llm/prompts.py` contains the reviewer prompt text.
 - `llm/reviewer.py` calls OpenAI and retries validation failures.
 - `policy/schemas.py` defines the structured access decision schema.
@@ -266,7 +290,8 @@ Current modules:
 - `policy/build_session_policy.py` builds inline STS session policies.
 - `aws/sts.py` wraps `AssumeRole`.
 - `aws/console_url.py` builds AWS federation console login URLs.
-- `tests/` covers credential handler behavior, policy validation, and session policy generation.
+- `tests/` covers credential handler behavior, policy validation, and session
+  policy generation.
 
 Broker-side request logging to DynamoDB is not implemented yet.
 
@@ -276,12 +301,17 @@ Local helper scripts.
 
 Current scripts:
 
-- `bootstrap_demo_users.py` bootstraps or tears down demo Cognito users, the demo agent record, demo policies, `customer_data` rows, and `analytics_data` rows.
-- `deploy_frontend.sh` runs the single-stack CDK deploy for the frontend hosting path.
-- `automation/update_layout_with_codex.sh` runs Codex to refresh this layout doc.
+- `bootstrap_demo_users.py` bootstraps demo Cognito users, the demo agent
+  record, demo policies, `customer_data` rows, and `analytics_data` rows. It
+  also supports a dry-run teardown by default.
+- `deploy_frontend.sh` runs the single-stack CDK deploy for the frontend hosting
+  path.
+- `automation/update_layout_with_codex.sh` runs Codex to refresh this layout
+  doc.
 - `automation/git_sync.sh` stages, commits, and pulls from the current branch.
 - `automation/install_launchd.sh` installs the local launchd jobs.
-- `launchd/*.plist` defines the local layout-refresh and git-sync launch agents.
+- `launchd/*.plist` defines the local layout-refresh and git-sync launch
+  agents.
 
 ### `.agents/`
 
@@ -289,8 +319,10 @@ Project-local Codex skills.
 
 Current files:
 
-- `skills/deploy-frontend/SKILL.md` tells Codex how to deploy the frontend hosting path.
-- `skills/deploy-frontend/agents/openai.yaml` contains UI metadata for the skill.
+- `skills/deploy-frontend/SKILL.md` tells Codex how to deploy the frontend
+  hosting path.
+- `skills/deploy-frontend/agents/openai.yaml` contains UI metadata for the
+  skill.
 
 Use it from this repo by telling Codex:
 
@@ -304,7 +336,8 @@ The skill runs `scripts/deploy_frontend.sh`.
 
 Local runtime folder created by the automation scripts.
 
-It is ignored by git and holds local logs and lock folders.
+It is ignored by git and holds local logs and lock folders. Do not put product
+source here.
 
 ## Planned Or Missing Layout
 
