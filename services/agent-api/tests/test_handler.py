@@ -4,6 +4,26 @@ from types import SimpleNamespace
 from agent_api import handler
 
 
+def test_agent_instructions_include_policy_table_context(monkeypatch):
+    monkeypatch.setenv("POLICY_TABLE_NAME", "policy-table")
+    monkeypatch.setenv(
+        "POLICY_TABLE_ARN",
+        "arn:aws:dynamodb:ap-southeast-2:338375260114:table/policy-table",
+    )
+
+    instructions = handler.agent_instructions()
+
+    assert "DynamoDB table name: policy-table" in instructions
+    assert (
+        "arn:aws:dynamodb:ap-southeast-2:338375260114:table/policy-table"
+        in instructions
+    )
+    assert "Ask for the target user_id if it is missing" in instructions
+    assert "James Brown is an IT support engineer" in instructions
+    assert "aws dynamodb put-item --table-name policy-table" in instructions
+    assert '"user_id": {"S": "<target user id>"}' in instructions
+
+
 class FakeLambdaClient:
     def __init__(self):
         self.invocations = []
@@ -33,7 +53,10 @@ def test_route_handler_invokes_worker_with_authorizer_user(monkeypatch):
                 "domainName": "example.execute-api.ap-southeast-2.amazonaws.com",
                 "stage": "prod",
                 "requestId": "gateway-req-1",
-                "authorizer": {"user_id": "trusted-cognito-sub"},
+                "authorizer": {
+                    "user_id": "trusted-cognito-sub",
+                    "groups": "employee",
+                },
             },
         },
         SimpleNamespace(aws_request_id="aws-1"),
@@ -43,6 +66,7 @@ def test_route_handler_invokes_worker_with_authorizer_user(monkeypatch):
     assert len(fake_lambda.invocations) == 1
     worker_payload = json.loads(fake_lambda.invocations[0]["Payload"].decode("utf-8"))
     assert worker_payload["user_id"] == "trusted-cognito-sub"
+    assert worker_payload["groups"] == "employee"
     assert worker_payload["payload"]["user_id"] == "attacker-controlled"
 
 
@@ -51,6 +75,8 @@ def test_worker_streams_agent_result(monkeypatch):
     monkeypatch.setattr(handler, "get_openai_key", lambda: "sk-test")
 
     async def fake_stream_friendly_agent_response(**kwargs):
+        assert kwargs["user_id"] == "trusted-cognito-sub"
+        assert kwargs["is_staff"] is True
         handler.stream_text(
             connection_id=kwargs["connection_id"],
             domain_name=kwargs["domain_name"],
@@ -83,6 +109,7 @@ def test_worker_streams_agent_result(monkeypatch):
             "domain_name": "example.execute-api.ap-southeast-2.amazonaws.com",
             "stage": "prod",
             "user_id": "trusted-cognito-sub",
+            "groups": "employee",
             "payload": {"requestId": "req-1", "message": "tell a story about ducks"},
         },
         SimpleNamespace(aws_request_id="aws-1"),
@@ -120,4 +147,66 @@ def test_worker_returns_error_when_prompt_missing(monkeypatch):
 
     assert result["statusCode"] == 400
     assert [message["type"] for message in sent_messages] == ["ack", "error"]
-    assert sent_messages[1]["error"] == "missing_prompt"
+    assert sent_messages[1]["error"] == "invalid_request"
+    assert "message, prompt, or reason" in sent_messages[1]["missing"]
+
+
+def test_worker_returns_error_when_request_id_missing(monkeypatch):
+    sent_messages = []
+    monkeypatch.setattr(
+        handler,
+        "send_ws_message",
+        lambda **kwargs: sent_messages.append(kwargs["payload"]) or True,
+    )
+
+    result = handler.worker_handler(
+        {
+            "connection_id": "conn-1",
+            "domain_name": "example.execute-api.ap-southeast-2.amazonaws.com",
+            "stage": "prod",
+            "user_id": "trusted-cognito-sub",
+            "payload": {"message": "I need customer support access for ticket IT-123"},
+        },
+        SimpleNamespace(aws_request_id="aws-1"),
+    )
+
+    assert result["statusCode"] == 400
+    assert [message["type"] for message in sent_messages] == ["ack", "error"]
+    assert sent_messages[1]["error"] == "invalid_request"
+    assert sent_messages[1]["missing"] == ["requestId"]
+
+
+def test_staff_status_comes_from_cognito_groups():
+    assert handler.is_staff_from_groups({"employee"}) is True
+    assert handler.is_staff_from_groups({"admin"}) is True
+    assert handler.is_staff_from_groups({"customer"}) is False
+
+
+def test_call_broker_credentials_uses_expected_query(monkeypatch):
+    captured = {}
+    monkeypatch.setenv(
+        "CREDENTIALS_URL",
+        "https://broker.example.com/prod/credentials",
+    )
+
+    def fake_signed_get_json(url):
+        captured["url"] = url
+        return 200, {"status": "approved"}
+
+    monkeypatch.setattr(handler, "signed_get_json", fake_signed_get_json)
+
+    result = handler.call_broker_credentials(
+        user_id="trusted-cognito-sub",
+        reason="Support ticket IT-123 needs customer authorisation check",
+        is_staff=True,
+    )
+
+    assert result == {
+        "status_code": 200,
+        "ok": True,
+        "body": {"status": "approved"},
+    }
+    assert "user_id=trusted-cognito-sub" in captured["url"]
+    assert "is_staff=true" in captured["url"]
+    assert "reason=Support+ticket+IT-123" in captured["url"]
+    assert "resource=" not in captured["url"]

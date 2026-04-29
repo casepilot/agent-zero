@@ -190,7 +190,9 @@ def test_agent_only_credentials_api_created():
             "Environment": {
                 "Variables": assertions.Match.object_like(
                     {
-                        "AGENT_MODEL": "gpt-5-nano",
+                        "AGENT_MODEL": "gpt-5.5",
+                        "AGENT_REASONING_EFFORT": "medium",
+                        "CREDENTIALS_URL": assertions.Match.any_value(),
                         "OPENAI_SECRET_NAME": "openai-key",
                     }
                 ),
@@ -210,6 +212,24 @@ def test_agent_only_credentials_api_created():
                                     "secretsmanager:DescribeSecret",
                                 ],
                                 "Effect": "Allow",
+                            }
+                        )
+                    ]
+                ),
+            },
+        },
+    )
+    template.has_resource_properties(
+        "AWS::IAM::Policy",
+        {
+            "PolicyDocument": {
+                "Statement": assertions.Match.array_with(
+                    [
+                        assertions.Match.object_like(
+                            {
+                                "Action": "execute-api:Invoke",
+                                "Effect": "Allow",
+                                "Resource": assertions.Match.any_value(),
                             }
                         )
                     ]
