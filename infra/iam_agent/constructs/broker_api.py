@@ -1,12 +1,49 @@
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
-from aws_cdk import Aws, BundlingOptions, CfnOutput, DockerImage, Duration
+import jsii
+from aws_cdk import Aws, BundlingOptions, CfnOutput, DockerImage, Duration, ILocalBundling
 from aws_cdk import aws_apigateway as apigateway
 from aws_cdk import aws_apigatewayv2 as apigatewayv2
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as lambda_
 from aws_cdk import aws_secretsmanager as secretsmanager
 from constructs import Construct
+
+
+@jsii.implements(ILocalBundling)
+class _PythonServiceBundling:
+    def __init__(self, service_path: Path) -> None:
+        self.service_path = service_path
+
+    def try_bundle(self, output_dir: str, options: BundlingOptions) -> bool:
+        requirements_path = self.service_path / "requirements.txt"
+        src_path = self.service_path / "src"
+
+        if not src_path.exists():
+            return False
+
+        try:
+            if requirements_path.exists():
+                subprocess.check_call(
+                    [
+                        sys.executable,
+                        "-m",
+                        "pip",
+                        "install",
+                        "-r",
+                        str(requirements_path),
+                        "-t",
+                        output_dir,
+                    ]
+                )
+            shutil.copytree(src_path, output_dir, dirs_exist_ok=True)
+        except (OSError, subprocess.CalledProcessError):
+            return False
+
+        return True
 
 
 class BrokerApi(Construct):
@@ -32,6 +69,24 @@ class BrokerApi(Construct):
             "OpenAiSecret",
             "openai-key",
         )
+        broker_bundling = BundlingOptions(
+            image=DockerImage.from_registry("public.ecr.aws/sam/build-python3.11"),
+            command=[
+                "bash",
+                "-c",
+                "pip install -r requirements.txt -t /asset-output && cp -R src/* /asset-output/",
+            ],
+            local=_PythonServiceBundling(broker_service_path),
+        )
+        agent_bundling = BundlingOptions(
+            image=DockerImage.from_registry("public.ecr.aws/sam/build-python3.11"),
+            command=[
+                "bash",
+                "-c",
+                "pip install -r requirements.txt -t /asset-output && cp -R src/* /asset-output/",
+            ],
+            local=_PythonServiceBundling(agent_service_path),
+        )
 
         # AgentZero is the IAM agent. It owns broker-side credential decisions.
         self.broker_lambda = lambda_.Function(
@@ -43,14 +98,7 @@ class BrokerApi(Construct):
             handler="broker_api.handlers.credentials.handler",
             code=lambda_.Code.from_asset(
                 str(broker_service_path),
-                bundling=BundlingOptions(
-                    image=DockerImage.from_registry("public.ecr.aws/sam/build-python3.11"),
-                    command=[
-                        "bash",
-                        "-c",
-                        "pip install -r requirements.txt -t /asset-output && cp -R src/* /asset-output/",
-                    ],
-                ),
+                bundling=broker_bundling,
             ),
             timeout=Duration.seconds(30),
             environment={
@@ -118,14 +166,7 @@ class BrokerApi(Construct):
 
         agent_code = lambda_.Code.from_asset(
             str(agent_service_path),
-            bundling=BundlingOptions(
-                image=DockerImage.from_registry("public.ecr.aws/sam/build-python3.11"),
-                command=[
-                    "bash",
-                    "-c",
-                    "pip install -r requirements.txt -t /asset-output && cp -R src/* /asset-output/",
-                ],
-            ),
+            bundling=agent_bundling,
         )
 
         # UserAgent is the agent that users interact with.
