@@ -8,8 +8,10 @@ code should live.
 
 ## Current Source Layout
 
-This tree shows the useful checked-in source, docs, tests, and automation.
-Generated dependency and build folders are listed later.
+This tree shows the checked-in source, docs, tests, and automation that matter
+for contributor work. Generated dependency and build folders are listed later.
+The repo root also currently has a tracked `.DS_Store`; treat it as local
+macOS metadata, not as a project file.
 
 ```text
 agent-zero/
@@ -152,7 +154,6 @@ generated, or not checked in and should not guide new feature placement.
 
 ```text
 agent-zero/
-  .DS_Store
   .env
   cdk.out/
   .codex-automation/
@@ -166,6 +167,9 @@ agent-zero/
       layout-refresh.out.log
   app/
     .env
+    app/
+      pages/
+        chats/        # empty local folder
     node_modules/
     .nuxt/
     .output/
@@ -191,6 +195,8 @@ Other ignored local folders may appear after running tools, such as
 - `README.md` is the repo entry point.
 - `.gitignore` ignores local env files, Python caches, Node dependencies,
   logs, local automation runtime files, and editor files.
+- `.DS_Store` is currently tracked in git, but it is macOS metadata and should
+  not guide project structure.
 
 ### `app/`
 
@@ -246,13 +252,15 @@ The stack is `IamAgentStack` and the project currently uses one CDK stack.
 
 Current constructs:
 
-- `auth.py` creates the Cognito user pool, app client, and `admin` and
-  `employee` groups.
-- `data.py` creates five DynamoDB tables:
+- `auth.py` creates the Cognito user pool, app client, and `admin`, `employee`,
+  and `customer` groups.
+- `data.py` creates seven DynamoDB tables:
   - `users-table`
   - `policy-table`
   - `customer_data`
   - `analytics_data`
+  - `transactions`
+  - `account_data`
   - `request_logs`
 - `broker_api.py` creates:
   - the broad broker credentials role used with scoped STS session policies
@@ -278,7 +286,7 @@ Current constructs:
 Current config:
 
 - `resources.py` stores the project name, AWS account, AWS region, Cognito group
-  names, and Amplify app root.
+  names (`admin`, `employee`, and `customer`), and Amplify app root.
 
 Current tests:
 
@@ -310,11 +318,13 @@ Current state:
   stream types for reasoning, tool calls, and assistant answer updates.
 - The agent instructions include policy-table context for identity admins and
   access request guidance for employees.
-- The live agent currently exposes a `check_agent_employee_access` demo tool so
-  the UI can render tool-call lifecycle events.
-- `handler.py` also contains an IAM-signed Broker API helper for
-  `GET /credentials`, but that helper is not wired into the live agent tool path
-  yet.
+- The live agent exposes tools for listing known resources, requesting broker
+  access, running DynamoDB operations, and writing policy-table records.
+- `handler.py` contains an IAM-signed Broker API helper for `GET /credentials`.
+  The `request_aws_access` tool uses it and stores approved temporary
+  credentials for the current turn.
+- `run_dynamodb_operation` first tries the worker's current AWS credentials. If
+  broker access is approved, it can retry using the scoped STS credentials.
 - The worker uses the trusted Cognito `sub` from the authorizer context, not a
   caller-supplied body value.
 - The worker loads the OpenAI key from Secrets Manager before starting the
@@ -322,9 +332,9 @@ Current state:
 - `tests/test_handler.py` checks trusted authorizer identity handling, staff
   group handling, stream envelope mapping, and the broker query helper.
 
-This service can build a broker credentials request, but the live agent tool
-does not yet request broker credentials or use approved credentials to perform
-DynamoDB actions. The Nuxt chat screen is wired to this WebSocket flow.
+The Nuxt chat screen is wired to this WebSocket flow. The credential loop and
+DynamoDB tool path exist in code, but the full demo path still needs end-to-end
+validation.
 
 ### `services/broker-api/`
 
@@ -339,8 +349,8 @@ Current state:
 - Loads the principal profile from `users-table`.
 - Loads a principal policy from `policy-table`.
 - Loads the OpenAI key from Secrets Manager.
-- Builds a resource catalog for `customer_data`, `analytics_data`, and
-  `policy_table`.
+- Builds a resource catalog for `users_table`, `user_pool`, `customer_data`,
+  `analytics_data`, `transactions`, `account_data`, and `policy_table`.
 - Calls an OpenAI reviewer for a structured access decision.
 - Validates decisions with deterministic allowlists, deny rules, and schema
   checks.
@@ -373,8 +383,8 @@ Local helper scripts.
 Current scripts:
 
 - `bootstrap_demo_users.py` bootstraps demo Cognito users, the demo agent
-  record, demo policies, `customer_data` rows, and `analytics_data` rows. It
-  also supports a dry-run teardown by default.
+  record, demo policies, `customer_data`, `analytics_data`, `transactions`, and
+  `account_data` rows. It also supports a dry-run teardown by default.
 - `deploy_frontend.sh` runs the single-stack CDK deploy for the frontend hosting
   path.
 - `automation/update_layout_with_codex.sh` runs Codex to refresh this layout
@@ -450,7 +460,7 @@ Use it for:
 The broker still needs:
 
 - stronger human and agent identity mapping
-- agent tool execution after credentials are issued
+- end-to-end validation of the chat credential loop
 - more complete resource coverage for the full demo story
 
 ### More App Work
@@ -464,8 +474,9 @@ The Nuxt app still needs:
 
 Planned standalone fake data for the demo.
 
-Some demo data currently lives inline in `scripts/bootstrap_demo_users.py`.
-Move or copy it here if the project needs reusable fixtures.
+Some demo data currently lives inline in `scripts/bootstrap_demo_users.py`,
+including customer, analytics, transaction, and account rows. Move or copy it
+here if the project needs reusable fixtures.
 
 ### More Docs
 
