@@ -24,20 +24,9 @@
 24. [x] Add the customer support demo chat screen to the single Nuxt app. Live desktop chat UI is in place on `/chat` with Agent API WebSocket streaming.
 25. [x] Add Amplify hosting infrastructure for `app/`.
 26. [x] Remove the separate support agent UI.
-<<<<<<< HEAD
-27. [x] Connect the Nuxt chat flow to the customer support LLM agent. The Nuxt chat now consumes rich Agent API WebSocket streaming, including markers, reasoning summaries, safe tool result summaries, markdown-rendered final answer deltas, and end-turn events.
-28. [ ] Add demo data for customers, flights, bookings, and sensitive internal records. bank_customer_profiles, bank_operational_metrics, bank_transactions, and bank_balances are bootstrapped; flights, bookings, and sensitive internal records remain.
-29. [ ] Add scripts for seeding demo data and printing deployed stack outputs. Demo user bootstrap now seeds and tears down users, policies, bank_customer_profiles, bank_operational_metrics, bank_transactions, and bank_balances.
-=======
 27. [ ] Connect the Nuxt chat flow to the customer support LLM agent. Agent API now has rich WebSocket streaming for OpenAI Agents SDK turns, including markers, reasoning summaries, tool calls, tool results, final answer deltas, and end-turn events.
-<<<<<<< HEAD
-28. [x] Add bank demo data. Final demo data now seeds bank_customer_profiles, bank_operational_metrics, bank_transactions, and bank_balances with bank-only production-style records.
-29. [x] Add scripts for seeding demo data and printing deployed stack outputs. Demo bootstrap now clears old demo data, deletes old demo Cognito users, and seeds bank users, policies, balances, transactions, customer profiles, and operational metrics.
->>>>>>> a63f2be74b445584013c259c51be4e3672438b69
-=======
 28. [x] Add bank demo data. Final demo data now seeds bank_customer_profiles, bank_operational_metrics, bank_transactions, bank_balances, and support-requests with bank-only production-style records.
 29. [x] Add scripts for seeding demo data and printing deployed stack outputs. Demo bootstrap now clears old demo data, deletes old demo Cognito users, and seeds bank users, policies, balances, transactions, customer profiles, support requests, and operational metrics.
->>>>>>> 3c4b6a9e5e2745e113f22a5c02a6e17e32ea24c6
 30. [ ] Write docs for architecture, API usage, threat model, and the hackathon demo script. Agent WebSocket streaming contract is documented in `docs/api.md`.
 31. [ ] Run an end-to-end demo path for human approval, agent approval, and agent denial.
 32. [x] Add local automation to refresh `docs/layout.md` with Codex every 30 minutes and run git stage, commit, and pull every 5 minutes.

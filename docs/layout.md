@@ -277,10 +277,7 @@ Current constructs:
   - `bank_operational_metrics`
   - `bank_transactions`
   - `bank_balances`
-<<<<<<< HEAD
-=======
   - `support-requests`
->>>>>>> 3c4b6a9e5e2745e113f22a5c02a6e17e32ea24c6
   - `request_logs`
 - `broker_api.py` creates:
   - the broad broker credentials role used with scoped STS session policies
@@ -369,14 +366,8 @@ Current state:
 - Loads the principal profile from `users-table`.
 - Loads a principal policy from `policy-table`.
 - Loads the OpenAI key from Secrets Manager.
-<<<<<<< HEAD
-- Builds a resource catalog for `users_table`, `user_pool`,
-  `bank_customer_profiles`, `bank_operational_metrics`, `bank_transactions`,
-  `bank_balances`, and `policy_table`.
-=======
 - Builds a resource catalog for the bank DynamoDB tables, Cognito user pool,
   users table, and policy table.
->>>>>>> 3c4b6a9e5e2745e113f22a5c02a6e17e32ea24c6
 - Calls an OpenAI reviewer for a structured access decision.
 - Validates decisions with deterministic allowlists, deny rules, and schema
   checks.
@@ -408,16 +399,9 @@ Local helper scripts.
 
 Current scripts:
 
-<<<<<<< HEAD
-- `bootstrap_demo_users.py` imports data from `bootstrap/bank_data.py` and
-  bootstraps bank demo Cognito users, principal rows, policies,
-  `bank_customer_profiles`, `bank_operational_metrics`, `bank_transactions`, and
-  `bank_balances`. It also supports teardown, with dry-run teardown by default.
-=======
 - `bootstrap_demo_users.py` bootstraps demo Cognito users, demo policies,
   bank customer profiles, balances, transactions, support requests, and
   operational metrics. It also supports a dry-run teardown by default.
->>>>>>> 3c4b6a9e5e2745e113f22a5c02a6e17e32ea24c6
 - `deploy_frontend.sh` runs the single-stack CDK deploy for the frontend hosting
   path.
 - `automation/update_layout_with_codex.sh` runs Codex to refresh this layout
