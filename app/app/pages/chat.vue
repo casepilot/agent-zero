@@ -152,16 +152,25 @@ onBeforeUnmount(() => {
               <div class="flex w-full max-w-2xl flex-col gap-3">
                 <div class="rounded-lg border border-white/10 bg-white/[0.075] px-5 py-4 text-[15px] leading-7 text-slate-100 shadow-[0_16px_50px_rgba(0,0,0,0.22)] backdrop-blur-xl">
                   <div
-                    v-if="turn.reasoning"
+                    v-if="turn.reasoning || turn.status === 'thinking' || turn.phase === 'Preparing answer'"
                     class="mb-4 rounded-lg border border-sky-200/10 bg-slate-950/34 px-4 py-3"
                   >
-                    <details>
+                    <details :open="turn.status === 'thinking' && !turn.reasoning">
                       <summary class="flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-sky-100">
                         <Brain class="size-4" />
                         Thinking
                       </summary>
                       <p class="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-300">
-                        {{ turn.reasoning }}
+                        <template v-if="turn.reasoning">
+                          {{ turn.reasoning }}
+                        </template>
+                        <span
+                          v-else
+                          class="flex items-center gap-2"
+                        >
+                          <Loader2 class="size-4 animate-spin text-sky-200" />
+                          Checking policy and request context.
+                        </span>
                       </p>
                     </details>
                   </div>
