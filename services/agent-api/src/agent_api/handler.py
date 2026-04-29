@@ -31,8 +31,10 @@ RESOURCE_TABLE_ENV = {
     "transactions": "TRANSACTIONS_TABLE_NAME",
     "account_data": "ACCOUNT_DATA_TABLE_NAME",
 }
+KNOWN_COGNITO_GROUPS = {"admin", "employee", "customer"}
 RESOURCE_PURPOSES = {
     "users_table": "Principal directory for humans and agents.",
+    "user_pool": "Cognito user pool for application users and groups.",
     "policy_table": "Free-text access policy store.",
     "customer_data": "Customer support records.",
     "analytics_data": "Aggregated company analytics.",
@@ -99,6 +101,7 @@ whether a request is allowed.
 
 Known resources:
 {resource_lines}
+- user_pool: Cognito user pool. Purpose: {RESOURCE_PURPOSES["user_pool"]}
 
 Access request behavior:
 - When the user asks to work with company or AWS data, use run_dynamodb_operation
@@ -110,6 +113,9 @@ Access request behavior:
 - If AgentZero denies access, stop. Tell the user you cannot complete the
   request because it is outside their scope. Do not reveal internal policy text.
 - If required operation details are missing, ask a concise follow-up question.
+- If the user asks to create an application user, use create_cognito_user after
+  access has been approved. Required details are email and password; ask for
+  missing details instead of guessing.
 - Do not invent ticket IDs, resources, users, or reasons.
 - Continue the loop until the user's task is complete or AgentZero denies it.
 """
@@ -460,6 +466,122 @@ def run_dynamodb_call(
         "resource_key": resource_key,
         "operation": operation_name,
         "response": json_safe(response),
+    }
+
+
+def create_cognito_user_record(
+    *,
+    email: str,
+    password: str,
+    name: str | None,
+    group: str,
+    role: str | None,
+    is_human: bool,
+    credentials: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    email_value = email.strip().lower()
+    group_value = group.strip().lower()
+    if not email_value or not password:
+        return {
+            "ok": False,
+            "error": "missing_required_fields",
+            "message": "email and password are required.",
+        }
+    if group_value not in KNOWN_COGNITO_GROUPS:
+        return {
+            "ok": False,
+            "error": "invalid_group",
+            "message": f"group must be one of {sorted(KNOWN_COGNITO_GROUPS)}.",
+        }
+
+    session = boto3_session_from_credentials(credentials)
+    cognito = session.client("cognito-idp")
+    dynamodb = session.resource("dynamodb")
+    user_pool_id = os.environ["USER_POOL_ID"]
+    display_name = (name or email_value).strip()
+    try:
+        try:
+            cognito.admin_create_user(
+                UserPoolId=user_pool_id,
+                Username=email_value,
+                UserAttributes=[
+                    {"Name": "email", "Value": email_value},
+                    {"Name": "email_verified", "Value": "true"},
+                    {"Name": "name", "Value": display_name},
+                ],
+                TemporaryPassword=password,
+                MessageAction="SUPPRESS",
+            )
+        except ClientError as error:
+            if error.response.get("Error", {}).get("Code") != "UsernameExistsException":
+                raise
+            cognito.admin_update_user_attributes(
+                UserPoolId=user_pool_id,
+                Username=email_value,
+                UserAttributes=[
+                    {"Name": "email", "Value": email_value},
+                    {"Name": "email_verified", "Value": "true"},
+                    {"Name": "name", "Value": display_name},
+                ],
+            )
+
+        cognito.admin_set_user_password(
+            UserPoolId=user_pool_id,
+            Username=email_value,
+            Password=password,
+            Permanent=True,
+        )
+        cognito.admin_add_user_to_group(
+            UserPoolId=user_pool_id,
+            Username=email_value,
+            GroupName=group_value,
+        )
+        response = cognito.admin_get_user(
+            UserPoolId=user_pool_id,
+            Username=email_value,
+        )
+        attributes = {
+            attribute["Name"]: attribute["Value"]
+            for attribute in response.get("UserAttributes", [])
+        }
+        user_id = attributes.get("sub")
+        if not user_id:
+            raise RuntimeError("Cognito user did not include sub")
+
+        item = {
+            "user_id": user_id,
+            "username": email_value,
+            "name": display_name,
+            "role": (role or group_value).strip().lower(),
+            "is_human": bool(is_human),
+        }
+        dynamodb.Table(os.environ["USERS_TABLE_NAME"]).put_item(Item=item)
+    except ClientError as error:
+        error_info = error.response.get("Error", {})
+        return {
+            "ok": False,
+            "error": error_info.get("Code", type(error).__name__),
+            "message": error_info.get("Message", str(error)),
+            "email": email_value,
+            "group": group_value,
+        }
+    except Exception as error:
+        return {
+            "ok": False,
+            "error": type(error).__name__,
+            "message": str(error),
+            "email": email_value,
+            "group": group_value,
+        }
+
+    return {
+        "ok": True,
+        "user_id": user_id,
+        "username": email_value,
+        "name": display_name,
+        "group": group_value,
+        "role": item["role"],
+        "is_human": item["is_human"],
     }
 
 
