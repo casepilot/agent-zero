@@ -20,9 +20,9 @@
 18. [ ] Add broker-side request logging to DynamoDB.
 19. [ ] Create `services/mcp-server/` with a Lambda Function URL.
 20. [ ] Add MCP tools that request broker access and then perform approved DynamoDB actions.
-21. [ ] Create the Streamlit staff app in `apps/staff/`.
-22. [ ] Add Streamlit admin screens for creating humans, agents, and free-text policies.
-23. [ ] Add Streamlit employee screens for requesting access and receiving console URLs.
+21. [x] Create the Nuxt staff app in `apps/staff/`. Skeleton created with Tailwind CSS and shadcn-vue.
+22. [ ] Add Nuxt admin screens for creating humans, agents, and free-text policies.
+23. [ ] Add Nuxt employee screens for requesting access and receiving console URLs.
 24. [x] Create the Nuxt customer support agent app in `apps/support-agent/`.
 25. [x] Add Amplify hosting infrastructure for `apps/support-agent/`.
 26. [ ] Properly build out `apps/support-agent/`; currently only the Nuxt chat UI template has been dropped in.
@@ -38,4 +38,6 @@
 2. [ ] Deploy `IamAgentStack` with CDK so the Amplify app and branch are created.
 3. [ ] Connect the Amplify app to the GitHub repo if CDK cannot attach the repo automatically.
 4. [ ] Confirm Amplify builds `apps/support-agent/` from the monorepo root.
-5. [ ] Confirm the hosted support agent app loads from the Amplify default domain.
+5. [ ] Add Amplify hosting for `apps/staff/`.
+6. [ ] Confirm the hosted support agent app loads from the Amplify default domain.
+7. [ ] Confirm the hosted staff app loads from the Amplify default domain.

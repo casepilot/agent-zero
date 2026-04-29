@@ -173,7 +173,7 @@ The broker includes this catalog in the LLM system prompt so the model knows:
 
 ## Admin Staff App
 
-The staff app is built with Streamlit.
+The staff app is built with Nuxt.
 
 It uses Cognito auth.
 

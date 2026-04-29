@@ -94,16 +94,12 @@ iam-agent/
   apps/
     staff/
       README.md
-      requirements.txt
-      streamlit_app.py
-      pages/
-        admin_users.py
-        request_access.py
-        audit_log.py
-      iam_agent_client/
-        __init__.py
-        broker.py
-        cognito.py
+      package.json
+      nuxt.config.ts
+      app/
+      components/
+      server/
+      utils/
 
     support-agent/
       README.md
@@ -192,7 +188,7 @@ It calls the Broker API, receives approved temporary credentials, then performs 
 
 ### `apps/staff/`
 
-Streamlit app for internal users.
+Nuxt app for internal users.
 
 Admin users can create humans, agents, and free-text policies.
 
