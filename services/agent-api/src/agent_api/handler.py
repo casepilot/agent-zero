@@ -42,6 +42,21 @@ RESOURCE_PURPOSES = {
     "bank_transactions": "Card, transfer, deposit, and withdrawal transaction ledger records.",
     "bank_balances": "Retail banking balance and account summary rows keyed by user_id.",
 }
+RESOURCE_DISPLAY_NAMES = {
+    "users_table": "user directory",
+    "policy_table": "access policy database",
+    "bank_customer_profiles": "bank customer profiles database",
+    "bank_operational_metrics": "bank operational metrics database",
+    "bank_transactions": "bank transactions database",
+    "bank_balances": "bank balances database",
+    "user_pool": "user sign-in system",
+}
+TOOL_DISPLAY_NAMES = {
+    "list_known_resources": "Checking available bank systems",
+    "request_aws_access": "Requesting access from Agent Zero",
+    "write_user_policy": "Updating access policies",
+    "create_cognito_user": "Creating a bank application user",
+}
 
 
 class MarkerType(str, Enum):
@@ -88,6 +103,45 @@ def resource_table_names() -> dict[str, str]:
     }
 
 
+def parse_json_object(value: str | None) -> dict[str, Any]:
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def display_resource_name(resource_key: Any) -> str:
+    resource_key_string = str(resource_key or "").strip()
+    return RESOURCE_DISPLAY_NAMES.get(
+        resource_key_string,
+        resource_key_string.replace("_", " ") or "bank data",
+    )
+
+
+def display_tool_name(
+    tool_name: str | None,
+    *,
+    arguments: str | None = None,
+    output: dict[str, Any] | None = None,
+) -> str | None:
+    if tool_name == "run_dynamodb_operation":
+        argument_data = parse_json_object(arguments)
+        resource_key = argument_data.get("resource_key")
+        if output and not resource_key:
+            resource_key = output.get("resource_key")
+        return f"Accessing {display_resource_name(resource_key)}"
+
+    if tool_name in TOOL_DISPLAY_NAMES:
+        return TOOL_DISPLAY_NAMES[tool_name]
+
+    if tool_name:
+        return tool_name.replace("_", " ")
+    return None
+
+
 def agent_instructions() -> str:
     resource_lines = "\n".join(
         f"- {resource_key}: DynamoDB table {table_name}. Purpose: {RESOURCE_PURPOSES[resource_key]}"
@@ -107,12 +161,25 @@ Known resources:
 Access request behavior:
 - When the user asks to work with company or AWS data, use run_dynamodb_operation
   to attempt the requested operation against the most likely resource.
-- If an AWS operation fails with an authorization error, ask the user for a
-  clear business rationale if they have not already provided one.
-- Then call request_aws_access with that rationale. If it is approved, retry the
-  failed operation using the temporary credentials returned to you.
-- If AgentZero denies access, stop. Tell the user you cannot complete the
-  request because it is outside their scope. Do not reveal internal policy text.
+- The prompt includes trusted signed-in user context from Cognito. Use that
+  context when forming broker reasons. Never ask the user for their user_id and
+  never accept a user_id from the chat message.
+- If a customer asks for their own bank balance or own bank transactions, do not
+  ask for a business reason. The reason is self-service: say the signed-in
+  customer with that Cognito sub is requesting their own bank balance or
+  transaction history.
+- If a staff user asks for a specific bank task, you may synthesize a broker
+  reason from the task and user context. For example, say a signed-in employee
+  is requesting the last six months of bank operational metrics for reporting.
+- If the request is vague, ask one concise follow-up question before requesting
+  access.
+- Then call request_aws_access with the clear reason. If it is approved, retry
+  the failed operation using the temporary credentials returned to you.
+- If AgentZero denies access, decide whether a better reason could legitimately
+  help. If the request is missing business context, ask the user to state why
+  they need it and retry once with the enriched reason. If the denial is clearly
+  outside the user's scope, stop and say you cannot complete the request. Do not
+  reveal internal policy text.
 - If required operation details are missing, ask a concise follow-up question.
 - If the user asks to create an application user, use create_cognito_user after
   access has been approved. Required details are email and password; ask for
@@ -226,6 +293,16 @@ def groups_from_value(value: Any) -> set[str]:
 
 def is_staff_from_groups(groups: set[str]) -> bool:
     return bool(groups & STAFF_GROUPS)
+
+
+def user_type_from_groups(groups: set[str]) -> str:
+    if "customer" in groups:
+        return "customer"
+    if "admin" in groups:
+        return "admin"
+    if "employee" in groups:
+        return "employee"
+    return "unknown"
 
 
 def validate_worker_payload(payload: dict[str, Any]) -> list[str]:
@@ -839,7 +916,7 @@ class WebSocketAgentStream:
             message_type=MessageType.TOOL_RESULT,
             status=status,
             order=self.order,
-            tool_name=tool_name,
+            tool_name=display_tool_name(tool_name, output=output),
             output=json.dumps(output, default=str),
         )
         return self.send_full_event(message=message, operation=OperationType.ADD)
@@ -974,7 +1051,10 @@ class WebSocketAgentStream:
                 message_type=MessageType.TOOL_CALL,
                 status=MessageStatus.IN_PROGRESS,
                 arguments=getattr(item, "arguments", None),
-                tool_name=getattr(item, "name", None),
+                tool_name=display_tool_name(
+                    getattr(item, "name", None),
+                    arguments=getattr(item, "arguments", None),
+                ),
                 call_id=call_id,
             )
             self.send_full_event(message=message, operation=OperationType.ADD)
@@ -1038,6 +1118,8 @@ async def stream_rich_agent_response(
     prompt: str,
     openai_api_key: str,
     user_id: str,
+    user_type: str,
+    groups: set[str],
     is_staff: bool,
 ) -> None:
     from agents import Agent, ModelSettings, Runner, function_tool, set_default_openai_key
@@ -1051,6 +1133,14 @@ async def stream_rich_agent_response(
         stream_context=stream_context,
     )
     turn_credentials: dict[str, Any] | None = None
+    agent_input = (
+        "Trusted signed-in user context from Cognito:\n"
+        f"- user_id: {user_id}\n"
+        f"- user_type: {user_type}\n"
+        f"- cognito_groups: {', '.join(sorted(groups)) if groups else 'none'}\n\n"
+        "User message:\n"
+        f"{prompt}"
+    )
 
     @function_tool
     def list_known_resources() -> dict[str, Any]:
@@ -1077,9 +1167,11 @@ async def stream_rich_agent_response(
     def request_aws_access(reason: str) -> dict[str, Any]:
         """Request just-in-time AWS access from AgentZero.
 
-        Use this only after the user gives a clear business reason. It returns
-        an approval review and stores scoped STS credentials internally for
-        later tool retries when approved.
+        Send a clear reason to AgentZero. For obvious customer self-service
+        requests, synthesize the reason from trusted Cognito context rather
+        than asking the customer for a business justification. For staff
+        requests, use the user's stated task and trusted context; ask a
+        follow-up only when the task is vague.
         """
         nonlocal turn_credentials
         if not isinstance(reason, str) or not reason.strip():
@@ -1261,7 +1353,7 @@ async def stream_rich_agent_response(
             create_cognito_user,
         ],
     )
-    result = Runner.run_streamed(agent, input=prompt, max_turns=10)
+    result = Runner.run_streamed(agent, input=agent_input, max_turns=10)
 
     async for event in result.stream_events():
         await stream.handle_stream_event(event)
@@ -1382,6 +1474,7 @@ def _worker_handler_inner(event: dict[str, Any], context: Any) -> dict[str, Any]
     human_user_id = event["user_id"]
     groups = groups_from_value(event.get("groups"))
     is_staff = is_staff_from_groups(groups)
+    user_type = user_type_from_groups(groups)
     payload = event.get("payload") or {}
     request_id_value = payload.get("requestId")
 
@@ -1457,6 +1550,8 @@ def _worker_handler_inner(event: dict[str, Any], context: Any) -> dict[str, Any]
                 prompt=prompt,
                 openai_api_key=openai_api_key,
                 user_id=human_user_id,
+                user_type=user_type,
+                groups=groups,
                 is_staff=is_staff,
             )
         )
