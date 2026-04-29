@@ -7,8 +7,9 @@ from broker_api.policy.validate_decision import validate_decision
 
 
 SUPPORT_POLICY = (
-    "Employee One is a customer support employee. They may read customer_data "
-    "for specific support requests. They must not access analytics_data."
+    "Employee One is an IT support engineer. Their job is to investigate "
+    "assigned IT support tickets, customer authorisation problems, account "
+    "access issues, and operational incidents."
 )
 ANALYST_POLICY = (
     "Dana is a company analyst. They may use analytics data for business "
@@ -42,10 +43,10 @@ def test_support_can_get_customer_data_read_access():
     assert validated is decision
 
 
-def test_support_cannot_get_analytics_data():
+def test_external_customer_cannot_get_analytics_data():
     decision = AccessDecision(
         approved=True,
-        reason="Support wants analytics.",
+        reason="Customer wants analytics.",
         duration_seconds=900,
         grants=[{"resource_key": "analytics_data", "actions": ["dynamodb:Scan"]}],
     )
@@ -53,8 +54,8 @@ def test_support_cannot_get_analytics_data():
     with pytest.raises(ValueError, match="analytics_data"):
         validate_decision(
             decision=decision,
-            policy_text=SUPPORT_POLICY,
-            reason="Check company churn metrics.",
+            policy_text="Riley is an external customer using the customer portal.",
+            reason="End customer asks to see company churn metrics.",
         )
 
 

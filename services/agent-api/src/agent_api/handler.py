@@ -93,7 +93,7 @@ def call_credentials_endpoint(
     }
     credentials_url = f"{os.environ['CREDENTIALS_URL']}?{urlencode(query, quote_via=quote)}"
     prepared_request = sign_request("GET", credentials_url).prepare()
-    result = URLLib3Session(timeout=10).send(prepared_request)
+    result = URLLib3Session(timeout=40).send(prepared_request)
     body = result.content.decode("utf-8")
 
     try:

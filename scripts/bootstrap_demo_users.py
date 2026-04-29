@@ -120,19 +120,24 @@ ANALYTICS_ROWS = [
 
 DEMO_POLICIES = {
     "admin@example.com": (
-        "Admin User is an administrator. They may read and write policy-table "
-        "when creating, reviewing, or editing access policies for users and "
-        "agents. They should receive the minimum actions needed for the task."
+        "Admin User is an identity and access administrator. Their job is to "
+        "create, review, and edit access policies for employees and agents. "
+        "They may request temporary access when doing policy administration "
+        "work, but should receive only the minimum access needed."
     ),
     "employee1@example.com": (
-        "Employee One is a customer support employee. They may read customer_data "
-        "for specific, legitimate customer support reasons. They must not access "
-        "analytics_data or edit policies."
+        "Employee One is an IT support engineer. Their job is to investigate "
+        "assigned IT support tickets, customer authorisation problems, account "
+        "access issues, and operational incidents. They may request temporary "
+        "access to relevant company systems when the request is tied to a "
+        "specific ticket and the access is limited to support work. They are "
+        "not an access administrator and should not change access policies."
     ),
     "customer_support_agent": (
-        "customer_support_agent is a customer support AI agent. It may read "
-        "customer_data for specific support cases. It must not access analytics_data "
-        "or policy-table."
+        "customer_support_agent is a customer support AI agent. Its job is to "
+        "help customers with account and support questions. It may request "
+        "temporary access when helping with a specific customer support case. "
+        "It is not an analyst and is not an access administrator."
     ),
 }
 

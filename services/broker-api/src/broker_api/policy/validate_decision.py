@@ -38,10 +38,6 @@ def validate_decision(
 
     is_admin = _contains_any(policy, {"admin", "administrator", "policy admin"})
     is_analyst = _contains_any(policy, {"analyst", "business intelligence"})
-    is_support = _contains_any(
-        policy,
-        {"support", "customer support", "help desk", "helpdesk"},
-    )
     looks_like_customer = _contains_any(
         combined,
         {"end customer", "customer user", "external customer"},
@@ -58,11 +54,11 @@ def validate_decision(
         has_write = bool(set(grant.actions) & WRITE_ACTIONS)
 
         if grant.resource_key == "analytics_data":
-            if looks_like_customer or (is_support and not is_analyst and not is_admin):
-                raise ValueError("customer/support policies cannot access analytics_data")
+            if looks_like_customer:
+                raise ValueError("end customers cannot access analytics_data")
 
         if grant.resource_key == "customer_data":
-            if is_analyst and not is_support and not is_admin:
+            if is_analyst and not is_admin:
                 raise ValueError("analyst policies cannot access customer_data")
 
         if grant.resource_key == "policy_table" and (has_write or not is_admin):

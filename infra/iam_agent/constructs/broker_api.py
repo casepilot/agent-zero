@@ -23,36 +23,12 @@ class BrokerApi(Construct):
         super().__init__(scope, construct_id)
 
         repo_root = Path(__file__).resolve().parents[3]
-        broker_code_path = repo_root / "services" / "broker-api" / "src"
         broker_service_path = repo_root / "services" / "broker-api"
         agent_code_path = repo_root / "services" / "agent-api" / "src"
         openai_secret = secretsmanager.Secret.from_secret_name_v2(
             self,
             "OpenAiSecret",
             "openai-key",
-        )
-
-        self.broker_credentials_role = iam.Role(
-            self,
-            "BrokerCredentialsRole",
-            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
-            description="Broad target role for AgentZero to scope down with STS session policies.",
-        )
-        self.broker_credentials_role.add_to_policy(
-            iam.PolicyStatement(
-                actions=["dynamodb:*"],
-                resources=[
-                    policy_table.table_arn,
-                    f"{policy_table.table_arn}/index/*",
-                    customer_data_table.table_arn,
-                    f"{customer_data_table.table_arn}/index/*",
-                    analytics_data_table.table_arn,
-                    f"{analytics_data_table.table_arn}/index/*",
-                ],
-            )
-        )
-        self.broker_credentials_role.add_to_policy(
-            iam.PolicyStatement(actions=["s3:*"], resources=["*"])
         )
 
         # AgentZero is the IAM agent. It owns broker-side credential decisions.
@@ -82,9 +58,35 @@ class BrokerApi(Construct):
                 "CUSTOMER_DATA_TABLE_ARN": customer_data_table.table_arn,
                 "ANALYTICS_DATA_TABLE_NAME": analytics_data_table.table_name,
                 "ANALYTICS_DATA_TABLE_ARN": analytics_data_table.table_arn,
-                "BROKER_CREDENTIALS_ROLE_ARN": self.broker_credentials_role.role_arn,
                 "OPENAI_SECRET_NAME": "openai-key",
             },
+        )
+
+        self.broker_credentials_role = iam.Role(
+            self,
+            "BrokerCredentialsRole",
+            assumed_by=iam.ArnPrincipal(self.broker_lambda.role.role_arn),
+            description="Broad target role for AgentZero to scope down with STS session policies.",
+        )
+        self.broker_credentials_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["dynamodb:*"],
+                resources=[
+                    policy_table.table_arn,
+                    f"{policy_table.table_arn}/index/*",
+                    customer_data_table.table_arn,
+                    f"{customer_data_table.table_arn}/index/*",
+                    analytics_data_table.table_arn,
+                    f"{analytics_data_table.table_arn}/index/*",
+                ],
+            )
+        )
+        self.broker_credentials_role.add_to_policy(
+            iam.PolicyStatement(actions=["s3:*"], resources=["*"])
+        )
+        self.broker_lambda.add_environment(
+            "BROKER_CREDENTIALS_ROLE_ARN",
+            self.broker_credentials_role.role_arn,
         )
 
         users_table.grant_read_data(self.broker_lambda)
@@ -125,7 +127,7 @@ class BrokerApi(Construct):
             runtime=lambda_.Runtime.PYTHON_3_11,
             handler="agent_api.handler.handler",
             code=lambda_.Code.from_asset(str(agent_code_path)),
-            timeout=Duration.seconds(15),
+            timeout=Duration.seconds(45),
             environment={
                 "CREDENTIALS_URL": credentials_url,
                 "OPENAI_SECRET_NAME": "openai-key",
