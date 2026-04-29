@@ -7,6 +7,10 @@ import { Label } from '@/components/ui/label'
 const username = ref('')
 const password = ref('')
 const showPassword = ref(false)
+
+async function handleContinue() {
+  await navigateTo('/')
+}
 </script>
 
 <template>
@@ -29,7 +33,10 @@ const showPassword = ref(false)
         </h1>
       </div>
 
-      <form class="space-y-6">
+      <form
+        class="space-y-6"
+        @submit.prevent="handleContinue"
+      >
         <div class="space-y-3">
           <Label
             for="username"
