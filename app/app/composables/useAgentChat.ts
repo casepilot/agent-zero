@@ -51,6 +51,7 @@ export interface AgentChatTurn {
 }
 
 const ACTIVE_STATUSES: TurnStatus[] = ['connecting', 'waiting', 'thinking', 'answering']
+const LOG_PREFIX = '[agent-chat]'
 
 function cleanConfigValue(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
@@ -82,6 +83,135 @@ function buildErrorMessage(error: unknown) {
   return error instanceof Error && error.message
     ? error.message
     : 'Unable to reach the agent. Try again.'
+}
+
+function logInfo(event: string, fields: Record<string, unknown> = {}) {
+  console.info(LOG_PREFIX, event, fields)
+}
+
+function logWarn(event: string, fields: Record<string, unknown> = {}) {
+  console.warn(LOG_PREFIX, event, fields)
+}
+
+function logError(event: string, fields: Record<string, unknown> = {}) {
+  console.error(LOG_PREFIX, event, fields)
+}
+
+function endpointDetails(url: string) {
+  try {
+    const parsedUrl = new URL(url)
+
+    return {
+      protocol: parsedUrl.protocol,
+      host: parsedUrl.host,
+      pathname: parsedUrl.pathname,
+    }
+  } catch {
+    return {
+      protocol: '',
+      host: '',
+      pathname: '',
+    }
+  }
+}
+
+function decodeBase64Url(value: string) {
+  if (typeof atob !== 'function') {
+    return ''
+  }
+
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+  return atob(padded)
+}
+
+function tokenMetadata(accessToken: string) {
+  const tokenPayload = accessToken.split('.')[1]
+
+  if (!tokenPayload) {
+    return { available: false }
+  }
+
+  try {
+    const payload = JSON.parse(decodeBase64Url(tokenPayload)) as Record<string, unknown>
+    const expiresAtSeconds = typeof payload.exp === 'number' ? payload.exp : 0
+    const issuedAtSeconds = typeof payload.iat === 'number' ? payload.iat : 0
+    const groups = Array.isArray(payload['cognito:groups'])
+      ? payload['cognito:groups'].map(String)
+      : []
+
+    return {
+      available: true,
+      tokenUse: payload.token_use,
+      clientId: payload.client_id,
+      issuer: payload.iss,
+      subject: payload.sub,
+      username: payload.username,
+      groups,
+      issuedAt: issuedAtSeconds ? new Date(issuedAtSeconds * 1000).toISOString() : '',
+      expiresAt: expiresAtSeconds ? new Date(expiresAtSeconds * 1000).toISOString() : '',
+      expiresInSeconds: expiresAtSeconds ? Math.round(expiresAtSeconds - Date.now() / 1000) : null,
+    }
+  } catch (error) {
+    return {
+      available: false,
+      error: buildErrorMessage(error),
+    }
+  }
+}
+
+function summarizeStreamData(streamType: StreamEnvelope['streamType'], data: unknown[]) {
+  if (streamType === 'message_marker') {
+    const firstItem = data[0]
+    return {
+      marker: isRecord(firstItem) ? firstItem.marker : undefined,
+    }
+  }
+
+  if (streamType === 'delta') {
+    return {
+      count: data.length,
+      items: data.map((item) => {
+        if (!isRecord(item)) {
+          return { type: typeof item }
+        }
+
+        return {
+          type: item.type,
+          operation: item.operation,
+          status: item.status,
+          id: item.id,
+          contentLength: typeof item.content === 'string' ? item.content.length : 0,
+          patchType: isRecord(item.message) && isRecord(item.message.data)
+            ? item.message.data.type
+            : undefined,
+        }
+      }),
+    }
+  }
+
+  if (streamType === 'completed_message') {
+    return {
+      count: data.length,
+      items: data.map((item) => {
+        if (!isRecord(item) || !isRecord(item.message)) {
+          return { type: typeof item }
+        }
+
+        const messageData = isRecord(item.message.data) ? item.message.data : {}
+
+        return {
+          operation: item.operation,
+          id: item.id,
+          messageType: messageData.type,
+          status: messageData.status,
+          toolName: messageData.tool_name,
+        }
+      }),
+    }
+  }
+
+  return { count: data.length }
 }
 
 export function useAgentChat() {
@@ -132,12 +262,17 @@ export function useAgentChat() {
     connectionState.value = 'closed'
 
     if (!currentSocket) {
+      logInfo('socket_close_skipped', { reason: 'no_socket' })
       intentionalClose = false
       return
     }
 
     intentionalClose = true
     socket = null
+    logInfo('socket_close_requested', {
+      readyState: currentSocket.readyState,
+      activeRequestId,
+    })
     currentSocket.close()
 
     setTimeout(() => {
@@ -145,12 +280,19 @@ export function useAgentChat() {
     }, 0)
   }
 
-  function handleClose(closedSocket: WebSocket) {
+  function handleClose(closedSocket: WebSocket, event: CloseEvent) {
     if (socket === closedSocket) {
       socket = null
     }
 
     connectionState.value = 'closed'
+    logWarn('socket_closed', {
+      code: event.code,
+      reason: event.reason,
+      wasClean: event.wasClean,
+      intentionalClose,
+      activeRequestId,
+    })
 
     const activeTurn = findTurn()
     if (!intentionalClose && activeTurn && ACTIVE_STATUSES.includes(activeTurn.status)) {
@@ -165,9 +307,16 @@ export function useAgentChat() {
     socket = null
   }
 
-  function openSocket(accessToken: string) {
+  function openSocket(accessToken: string, forceRefresh: boolean) {
     return new Promise<WebSocket>((resolve, reject) => {
-      const ws = new WebSocket(`${agentWsUrl}?token=${encodeURIComponent(accessToken)}`)
+      const wsUrl = `${agentWsUrl}?token=${encodeURIComponent(accessToken)}`
+      logInfo('socket_connect_start', {
+        endpoint: endpointDetails(agentWsUrl),
+        forceRefresh,
+        token: tokenMetadata(accessToken),
+      })
+
+      const ws = new WebSocket(wsUrl)
       let opened = false
       let settled = false
 
@@ -176,6 +325,10 @@ export function useAgentChat() {
         settled = true
         socket = ws
         connectionState.value = 'open'
+        logInfo('socket_open', {
+          readyState: ws.readyState,
+          endpoint: endpointDetails(agentWsUrl),
+        })
         resolve(ws)
       }
 
@@ -184,21 +337,34 @@ export function useAgentChat() {
       }
 
       ws.onerror = () => {
+        logError('socket_error', {
+          opened,
+          settled,
+          readyState: ws.readyState,
+          endpoint: endpointDetails(agentWsUrl),
+        })
+
         if (!opened && !settled) {
           settled = true
           reject(new Error('Unable to connect to the agent.'))
         }
       }
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         if (!opened && !settled) {
           settled = true
-          reject(new Error('Unable to authenticate the agent connection.'))
+          logError('socket_connect_closed_before_open', {
+            code: event.code,
+            reason: event.reason,
+            wasClean: event.wasClean,
+            endpoint: endpointDetails(agentWsUrl),
+          })
+          reject(new Error(`Unable to authenticate the agent connection. Close code: ${event.code || 'unknown'}.`))
           return
         }
 
         if (socket === ws) {
-          handleClose(ws)
+          handleClose(ws, event)
         }
       }
     })
@@ -206,21 +372,30 @@ export function useAgentChat() {
 
   async function connect(forceRefresh = false) {
     if (!agentWsUrl) {
+      logError('config_missing_agent_ws_url')
       throw new Error('Agent WebSocket URL is not configured.')
     }
 
     if (import.meta.server) {
+      logError('connect_rejected_on_server')
       throw new Error('Agent chat can only connect from the browser.')
     }
 
     connectionState.value = 'connecting'
+    logInfo('token_fetch_start', { forceRefresh })
     const accessToken = await getAccessToken(forceRefresh)
 
     if (!accessToken) {
+      logError('token_fetch_empty', { forceRefresh })
       throw new Error('No active session was found.')
     }
 
-    return openSocket(accessToken)
+    logInfo('token_fetch_success', {
+      forceRefresh,
+      token: tokenMetadata(accessToken),
+    })
+
+    return openSocket(accessToken, forceRefresh)
   }
 
   async function getOpenSocket() {
@@ -235,7 +410,10 @@ export function useAgentChat() {
     connectPromise = (async () => {
       try {
         return await connect(false)
-      } catch {
+      } catch (error) {
+        logWarn('socket_connect_retrying_with_forced_refresh', {
+          error: buildErrorMessage(error),
+        })
         closeSocket()
         return connect(true)
       } finally {
@@ -285,6 +463,12 @@ export function useAgentChat() {
 
     turns.push(turn)
     activeRequestId = turn.requestId
+    logInfo('turn_created', {
+      requestId: turn.requestId,
+      threadId: turn.threadId,
+      parentId: turn.parentId,
+      promptLength: text.length,
+    })
     touch()
 
     try {
@@ -292,8 +476,18 @@ export function useAgentChat() {
       turn.status = 'waiting'
       turn.phase = 'Waiting for agent'
       ws.send(JSON.stringify(buildPayload(turn)))
+      logInfo('turn_sent', {
+        requestId: turn.requestId,
+        threadId: turn.threadId,
+        parentId: turn.parentId,
+        readyState: ws.readyState,
+      })
       touch()
     } catch (error) {
+      logError('turn_send_failed', {
+        requestId: turn.requestId,
+        error: buildErrorMessage(error),
+      })
       markTurnFailed(turn, 'Connection failed', buildErrorMessage(error))
 
       if (buildErrorMessage(error).includes('No active session')) {
@@ -320,6 +514,12 @@ export function useAgentChat() {
     turn.missing = []
     turn.lastSequenceId = 0
     activeRequestId = turn.requestId
+    logInfo('turn_retry_started', {
+      requestId: turn.requestId,
+      threadId: turn.threadId,
+      parentId: turn.parentId,
+      promptLength: turn.userText.length,
+    })
     touch()
 
     try {
@@ -327,8 +527,18 @@ export function useAgentChat() {
       turn.status = 'waiting'
       turn.phase = 'Waiting for agent'
       ws.send(JSON.stringify(buildPayload(turn)))
+      logInfo('turn_retry_sent', {
+        requestId: turn.requestId,
+        threadId: turn.threadId,
+        parentId: turn.parentId,
+        readyState: ws.readyState,
+      })
       touch()
     } catch (error) {
+      logError('turn_retry_failed', {
+        requestId: turn.requestId,
+        error: buildErrorMessage(error),
+      })
       markTurnFailed(turn, 'Retry failed', buildErrorMessage(error))
 
       if (buildErrorMessage(error).includes('No active session')) {
@@ -346,6 +556,7 @@ export function useAgentChat() {
 
     turn.status = 'waiting'
     turn.phase = 'Accepted'
+    logInfo('turn_ack', { requestId: turn.requestId })
     touch()
   }
 
@@ -363,6 +574,7 @@ export function useAgentChat() {
       activeRequestId = ''
     }
 
+    logInfo('turn_done', { requestId: turn.requestId })
     touch()
   }
 
@@ -379,6 +591,12 @@ export function useAgentChat() {
       message.message || 'The agent could not finish this turn.',
       message.missing || [],
     )
+    logError('turn_backend_error', {
+      requestId: turn.requestId,
+      error: message.error,
+      message: message.message,
+      missing: message.missing,
+    })
   }
 
   function handleSocketMessage(rawData: unknown) {
@@ -386,13 +604,25 @@ export function useAgentChat() {
 
     try {
       message = JSON.parse(String(rawData))
-    } catch {
+    } catch (error) {
+      logWarn('message_parse_failed', {
+        error: buildErrorMessage(error),
+        rawType: typeof rawData,
+      })
       return
     }
 
     if (!isRecord(message)) {
+      logWarn('message_ignored_non_object', { rawType: typeof message })
       return
     }
+
+    logInfo('message_received', {
+      type: message.type,
+      requestId: message.requestId,
+      streamType: message.streamType,
+      sequenceId: message.sequenceId,
+    })
 
     if (message.type === 'ack') {
       markAccepted(message as TopLevelMessage)
@@ -418,11 +648,22 @@ export function useAgentChat() {
     const turn = findTurn(message.requestId)
 
     if (!turn || turn.status === 'failed' || turn.status === 'complete') {
+      logWarn('stream_ignored_no_active_turn', {
+        requestId: message.requestId,
+        streamType: message.streamType,
+        sequenceId: message.sequenceId,
+      })
       return
     }
 
     if (typeof message.sequenceId === 'number') {
       if (message.sequenceId <= turn.lastSequenceId) {
+        logWarn('stream_ignored_duplicate_or_old_sequence', {
+          requestId: message.requestId,
+          streamType: message.streamType,
+          sequenceId: message.sequenceId,
+          lastSequenceId: turn.lastSequenceId,
+        })
         return
       }
 
@@ -430,6 +671,12 @@ export function useAgentChat() {
     }
 
     const data = Array.isArray(message.data) ? message.data : []
+    logInfo('stream_apply', {
+      requestId: turn.requestId,
+      streamType: message.streamType,
+      sequenceId: message.sequenceId,
+      summary: summarizeStreamData(message.streamType, data),
+    })
 
     if (message.streamType === 'message_marker') {
       handleMarker(turn, data[0])

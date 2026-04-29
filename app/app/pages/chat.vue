@@ -8,16 +8,20 @@ import {
   Loader2,
   RefreshCcw,
   SendHorizontal,
+  ShieldCheck,
   Sparkles,
+  UserRound,
   Wrench,
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { useAgentChat, type AgentChatTurn } from '~/composables/useAgentChat'
-import { useAmplifyAuth } from '~/composables/useAmplifyAuth'
+import { useAmplifyAuth, type AuthSessionProfile } from '~/composables/useAmplifyAuth'
 
 const draft = ref('')
 const messagesEl = ref<HTMLElement | null>(null)
-const { signOut: signOutFromAuth } = useAmplifyAuth()
+const sessionProfile = ref<AuthSessionProfile | null>(null)
+const sessionProfileError = ref('')
+const { getSessionProfile, signOut: signOutFromAuth } = useAmplifyAuth()
 const {
   turns,
   revision,
@@ -84,9 +88,41 @@ function isTurnLoading(turn: AgentChatTurn) {
   return ['connecting', 'waiting', 'thinking', 'answering'].includes(turn.status)
 }
 
+const displayName = computed(() => {
+  const profile = sessionProfile.value
+
+  if (!profile) {
+    return 'Checking session'
+  }
+
+  return profile.username || 'Signed in user'
+})
+
+const roleToneClass = computed(() => {
+  const role = sessionProfile.value?.role
+
+  if (role === 'admin') {
+    return 'border-amber-200/20 bg-amber-300/10 text-amber-100'
+  }
+
+  if (role === 'customer') {
+    return 'border-emerald-200/20 bg-emerald-300/10 text-emerald-100'
+  }
+
+  return 'border-sky-200/20 bg-sky-300/10 text-sky-100'
+})
+
 watch(revision, () => scrollToBottom())
 
-onMounted(() => scrollToBottom('auto'))
+onMounted(async () => {
+  scrollToBottom('auto')
+
+  try {
+    sessionProfile.value = await getSessionProfile()
+  } catch (error) {
+    sessionProfileError.value = error instanceof Error ? error.message : 'Unable to load session role.'
+  }
+})
 onBeforeUnmount(() => {
   closeAgentChat()
 })
@@ -99,15 +135,41 @@ onBeforeUnmount(() => {
       <div class="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.045)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:radial-gradient(circle_at_54%_46%,black,transparent_74%)]" />
     </div>
 
-    <Button
-      type="button"
-      variant="outline"
-      class="login-rise absolute right-7 top-6 z-20 h-10 border-white/12 bg-white/[0.06] px-4 text-sm text-slate-200 backdrop-blur-xl hover:bg-white/[0.10] hover:text-white"
-      @click="signOut"
-    >
-      <LogOut class="size-4" />
-      Sign out
-    </Button>
+    <div class="login-rise absolute right-7 top-6 z-20 flex items-center gap-3">
+      <div
+        class="flex min-w-64 items-center gap-3 rounded-lg border px-4 py-3 shadow-[0_16px_50px_rgba(0,0,0,0.22)] backdrop-blur-xl"
+        :class="roleToneClass"
+      >
+        <div class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white/12">
+          <ShieldCheck
+            v-if="sessionProfile?.role === 'admin'"
+            class="size-5"
+          />
+          <UserRound
+            v-else
+            class="size-5"
+          />
+        </div>
+        <div class="min-w-0">
+          <p class="truncate text-sm font-semibold leading-5">
+            {{ sessionProfile?.roleLabel || 'Loading role' }}
+          </p>
+          <p class="truncate text-xs leading-5 opacity-75">
+            {{ sessionProfileError || displayName }}
+          </p>
+        </div>
+      </div>
+
+      <Button
+        type="button"
+        variant="outline"
+        class="h-10 border-white/12 bg-white/[0.06] px-4 text-sm text-slate-200 backdrop-blur-xl hover:bg-white/[0.10] hover:text-white"
+        @click="signOut"
+      >
+        <LogOut class="size-4" />
+        Sign out
+      </Button>
+    </div>
 
     <section class="login-rise relative flex h-screen min-w-0 flex-col">
       <div
@@ -131,6 +193,14 @@ onBeforeUnmount(() => {
             <p class="mt-4 max-w-xl text-base leading-7 text-slate-400">
               Start with the customer request, ticket context, or policy question you want the agent to handle.
             </p>
+            <div
+              v-if="sessionProfile"
+              class="mt-6 inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm"
+              :class="roleToneClass"
+            >
+              <ShieldCheck class="size-4" />
+              Current role: {{ sessionProfile.roleLabel }}
+            </div>
           </div>
 
           <article
