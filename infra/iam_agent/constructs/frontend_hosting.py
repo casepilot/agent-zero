@@ -6,7 +6,13 @@ from iam_agent.config.resources import APP_ROOT
 
 
 class FrontendHosting(Construct):
-    def __init__(self, scope: Construct, construct_id: str) -> None:
+    def __init__(
+        self,
+        scope: Construct,
+        construct_id: str,
+        *,
+        agent_websocket_url: str,
+    ) -> None:
         super().__init__(scope, construct_id)
 
         build_spec = f"""version: 1
@@ -44,6 +50,10 @@ applications:
                 amplify.CfnApp.EnvironmentVariableProperty(
                     name="NITRO_PRESET",
                     value="aws_amplify",
+                ),
+                amplify.CfnApp.EnvironmentVariableProperty(
+                    name="NUXT_PUBLIC_AGENT_WS_URL",
+                    value=agent_websocket_url,
                 ),
             ],
         )

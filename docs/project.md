@@ -221,7 +221,10 @@ The demo should prove both sides:
 
 ## Agent API
 
-The Agent API is hosted as a Lambda behind API Gateway.
+The Agent API is hosted as Lambdas behind an API Gateway WebSocket API.
+
+The frontend connects to the Agent API WebSocket endpoint with Cognito auth.
+The Agent API calls the Broker API credentials endpoint internally.
 
 Human callers use Cognito auth to call the Agent API.
 

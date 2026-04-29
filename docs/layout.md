@@ -52,11 +52,18 @@ agent-zero/
             index.ts
       lib/
         utils.ts
+      composables/
+        useAmplifyAuth.ts
+      middleware/
+        auth.global.ts
       pages/
         index.vue
         login.vue
-        [chatId].vue
+        chats/
+          index.vue
+          [chatId].vue
       plugins/
+        amplify.client.ts
 
   docs/
     project.md
@@ -151,6 +158,7 @@ agent-zero/
       layout-refresh.err.log
       layout-refresh.out.log
   app/
+    .env
     node_modules/
     .nuxt/
     .output/
@@ -177,19 +185,25 @@ Current state:
 - Nuxt 4 app using pnpm.
 - Tailwind CSS and shadcn-vue are configured.
 - `lucide-vue-next` is used for icons.
-- `app/app/pages/index.vue` is the themed empty home state with a link to
-  `/flight-change`.
-- `app/app/pages/login.vue` is a static login screen that routes to
-  `/flight-change` on submit.
-- `app/app/pages/[chatId].vue` is the desktop chat interface with seeded chat
-  routes and local simulated streaming.
+- `/` redirects to `/chats`.
+- `app/app/pages/login.vue` is the login screen wired to Cognito through the
+  Amplify client SDK.
+- `app/app/pages/chats/index.vue` is the themed empty chat home state with a
+  link to `/chats/flight-change`.
+- `app/app/pages/chats/[chatId].vue` is the desktop chat interface with seeded
+  chat routes and local simulated streaming.
+- `app/app/composables/useAmplifyAuth.ts` contains shared Amplify Auth helpers.
+- `app/app/middleware/auth.global.ts` protects every route except `/login`.
+- `app/app/plugins/amplify.client.ts` configures Amplify on the client.
 - `app/app/components/ui/` contains shadcn-style button, input, and label
   components.
 - `app/app/lib/utils.ts` contains the shared `cn()` class helper.
-- `app/app/plugins/` exists but is empty.
+- `app/.env` is an ignored local file with public Cognito client config:
+  `NUXT_PUBLIC_AWS_REGION`, `NUXT_PUBLIC_COGNITO_USER_POOL_ID`, and
+  `NUXT_PUBLIC_COGNITO_USER_POOL_CLIENT_ID`.
 
-The real Cognito login flow, admin screens, employee request screens, and live
-customer support LLM flow are not built yet.
+Admin screens, employee request screens, and the live customer support LLM flow
+are not built yet.
 
 ### `docs/`
 

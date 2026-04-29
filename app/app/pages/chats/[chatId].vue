@@ -10,6 +10,7 @@ import {
   Sparkles,
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
+import { useAmplifyAuth } from '~/composables/useAmplifyAuth'
 
 type ChatRole = 'user' | 'assistant'
 
@@ -110,6 +111,7 @@ const streamChunks = [
 const draft = ref('')
 const isStreaming = ref(false)
 const messagesEl = ref<HTMLElement | null>(null)
+const { signOut: signOutFromAuth } = useAmplifyAuth()
 let streamTimer: ReturnType<typeof setInterval> | undefined
 
 const route = useRoute()
@@ -139,11 +141,15 @@ function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
 }
 
 async function selectChat(chatId: string) {
-  await navigateTo(`/${chatId}`)
+  await navigateTo(`/chats/${chatId}`)
 }
 
 async function signOut() {
-  await navigateTo('/login')
+  try {
+    await signOutFromAuth()
+  } finally {
+    await navigateTo('/login')
+  }
 }
 
 function sendMessage() {
@@ -363,7 +369,7 @@ onBeforeUnmount(() => {
               Choose a seeded chat from the left panel or return home to start from the empty state.
             </p>
             <NuxtLink
-              to="/"
+              to="/chats"
               class="mt-7 inline-flex h-11 items-center justify-center rounded-lg border border-white/12 bg-white/[0.075] px-4 text-sm font-medium text-slate-100 transition-colors hover:bg-white/[0.12] hover:text-white"
             >
               Back home

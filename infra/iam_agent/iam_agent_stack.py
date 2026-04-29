@@ -22,5 +22,10 @@ class IamAgentStack(Stack):
             policy_table=self.data.policy_table,
             customer_data_table=self.data.customer_data_table,
             analytics_data_table=self.data.analytics_data_table,
+            user_pool_client_id=self.auth.user_pool_client.ref,
         )
-        self.frontend_hosting = FrontendHosting(self, "FrontendHosting")
+        self.frontend_hosting = FrontendHosting(
+            self,
+            "FrontendHosting",
+            agent_websocket_url=self.broker_api.agent_websocket_url,
+        )

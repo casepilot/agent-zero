@@ -18,7 +18,7 @@
 16. [x] Add `sts:AssumeRole` with the inline session policy.
 17. [x] Add AWS console sign-in URL generation for human users.
 18. [ ] Add broker-side request logging to DynamoDB.
-19. [x] Create `services/agent-api/` with a Lambda behind API Gateway.
+19. [x] Create `services/agent-api/` with Lambdas behind an API Gateway WebSocket API.
 20. [ ] Add agent tools that request broker access and then perform approved DynamoDB actions.
 21. [x] Create the single Nuxt app in `app/`. Skeleton created with Tailwind CSS and shadcn-vue.
 22. [ ] Add Nuxt admin screens for creating humans, agents, and free-text policies.
@@ -32,6 +32,7 @@
 30. [ ] Write docs for architecture, API usage, threat model, and the hackathon demo script.
 31. [ ] Run an end-to-end demo path for human approval, agent approval, and agent denial.
 32. [x] Add local automation to refresh `docs/layout.md` with Codex every 30 minutes and run git stage, commit, and pull every 5 minutes.
+33. [x] Wire the Nuxt login screen to Cognito with the Amplify client SDK and protect every non-login route.
 
 ## Frontend Hosting
 

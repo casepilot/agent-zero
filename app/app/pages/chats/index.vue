@@ -45,11 +45,11 @@
         Select a chat to begin.
       </h1>
       <p class="mt-5 max-w-xl text-base leading-7 text-slate-400">
-        This is the empty home state. Each conversation has its own route, so the active chat is reflected directly in the URL.
+        This is the empty chat state. Each conversation has its own route, so the active chat is reflected directly in the URL.
       </p>
 
       <NuxtLink
-        to="/flight-change"
+        to="/chats/flight-change"
         class="mt-9 inline-flex h-12 items-center justify-center rounded-lg bg-sky-300 px-5 text-base font-medium text-slate-950 shadow-[0_16px_42px_rgba(56,189,248,0.22)] transition-colors hover:bg-sky-200"
       >
         Open default chat

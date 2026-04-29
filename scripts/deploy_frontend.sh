@@ -24,9 +24,21 @@ if ! command -v cdk >/dev/null 2>&1; then
   exit 127
 fi
 
+VENV_PYTHON="$INFRA_DIR/.venv/bin/python"
+
+if [[ ! -x "$VENV_PYTHON" ]]; then
+  echo "Creating Python virtualenv at $INFRA_DIR/.venv"
+  python3 -m venv "$INFRA_DIR/.venv"
+fi
+
+if ! "$VENV_PYTHON" -c "import aws_cdk" >/dev/null 2>&1; then
+  echo "Installing CDK Python dependencies from infra/requirements.txt"
+  "$VENV_PYTHON" -m pip install -r "$INFRA_DIR/requirements.txt"
+fi
+
 echo "Deploying $STACK_NAME from $INFRA_DIR"
 echo "AWS profile: $AWS_PROFILE_NAME"
 echo "Amplify app root: app"
 
 cd "$INFRA_DIR"
-exec cdk deploy "$STACK_NAME" --profile "$AWS_PROFILE_NAME" "$@"
+exec cdk deploy "$STACK_NAME" --profile "$AWS_PROFILE_NAME" --app ".venv/bin/python app.py" "$@"
