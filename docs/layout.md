@@ -2,8 +2,9 @@
 
 This file describes the current repo layout.
 
-It separates checked-in project files from local generated files. Use this file
-when adding new folders or deciding where new code should live.
+It separates checked-in project files from local generated, ignored, and
+untracked files. Use this file when adding new folders or deciding where new
+code should live.
 
 ## Current Source Layout
 
@@ -142,15 +143,16 @@ agent-zero/
       com.agent-zero.layout-refresh.plist
 ```
 
-## Local Or Generated Layout
+## Local, Generated, Or Untracked Layout
 
-These folders and files may exist in a local checkout. They are ignored or
-generated and should not guide new feature placement.
+These folders and files may exist in a local checkout. They are ignored,
+generated, or not checked in and should not guide new feature placement.
 
 ```text
 agent-zero/
   .DS_Store
   .env
+  cdk.out/
   .codex-automation/
     locks/
       layout-refresh.lock/
@@ -165,6 +167,9 @@ agent-zero/
     node_modules/
     .nuxt/
     .output/
+    app/
+      pages/
+        chats/
   infra/
     .venv/
     iam_agent/
@@ -176,7 +181,10 @@ agent-zero/
 ```
 
 Other ignored local folders may appear after running tools, such as
-`__pycache__/`, `.pytest_cache/`, `.venv/`, or `infra/cdk.out/`.
+`__pycache__/`, `.pytest_cache/`, `.venv/`, `cdk.out/`, or `infra/cdk.out/`.
+
+The local `app/app/pages/chats/` folder is currently empty. It is not part of
+the checked-in layout unless route files are added there.
 
 ## Current Folder Roles
 
@@ -238,11 +246,12 @@ Current constructs:
 
 - `auth.py` creates the Cognito user pool, app client, and `admin` and
   `employee` groups.
-- `data.py` creates four DynamoDB tables:
+- `data.py` creates five DynamoDB tables:
   - `users-table`
   - `policy-table`
   - `customer_data`
   - `analytics_data`
+  - `request_logs`
 - `broker_api.py` creates:
   - the broad broker credentials role used with scoped STS session policies
   - the Broker Lambda named `AgentZero`
@@ -261,7 +270,8 @@ Current constructs:
   - permissions for the worker Lambda to post messages back to WebSocket
     clients
 - `frontend_hosting.py` creates the Amplify app and `main` branch for the Nuxt
-  app.
+  app. It also passes the Agent WebSocket URL to Amplify as
+  `NUXT_PUBLIC_AGENT_WS_URL`.
 
 Current config:
 
@@ -292,18 +302,22 @@ Current state:
   `requestAccess` events.
 - `requestAccess` parses the WebSocket body and invokes the worker Lambda
   asynchronously.
-- The worker streams `ack`, `delta`, `broker_result`, and `done` messages back
-  to the WebSocket client.
-- The worker calls the Broker API `GET /credentials` endpoint using
-  IAM-signed requests.
+- The worker runs the OpenAI Agents SDK and streams `ack`, `delta`,
+  `broker_result`, `done`, and error messages back to the WebSocket client.
+- The agent instructions include policy-table context for identity admins and
+  access request guidance for employees.
+- The worker exposes a `request_aws_access` tool that calls the Broker API
+  `GET /credentials` endpoint using IAM-signed requests.
 - The broker call uses the trusted Cognito `sub` from the authorizer context,
   not a caller-supplied body value.
-- The worker loads the OpenAI secret as a plumbing check.
+- The worker loads the OpenAI key from Secrets Manager before starting the
+  agent stream.
 - `tests/test_handler.py` checks trusted authorizer identity handling and worker
   streaming behavior.
 
-This service does not yet run the customer support LLM agent tools or perform
-approved DynamoDB actions after credentials are issued.
+This service can request broker credentials, but it does not yet use approved
+credentials to perform DynamoDB actions. The Nuxt chat screen is also still
+simulated and not wired to this WebSocket flow.
 
 ### `services/broker-api/`
 
@@ -315,6 +329,7 @@ Current state:
 - Requires IAM-authenticated caller context from API Gateway.
 - Rejects caller-supplied resource choices. The broker chooses resources from
   its catalog.
+- Loads the principal profile from `users-table`.
 - Loads a principal policy from `policy-table`.
 - Loads the OpenAI key from Secrets Manager.
 - Builds a resource catalog for `customer_data`, `analytics_data`, and
@@ -326,10 +341,12 @@ Current state:
 - Calls `sts:AssumeRole` through the broker credentials role.
 - Returns temporary credentials for approved requests.
 - Returns an AWS console sign-in URL when `is_staff` is true.
+- Writes terminal audit records to `request_logs`.
 
 Current modules:
 
-- `handlers/credentials.py` contains the Lambda entry point and request flow.
+- `handlers/credentials.py` contains the Lambda entry point, request flow, and
+  audit logging.
 - `data/resource_catalog.py` defines broker-known resources and prompt
   formatting.
 - `llm/prompts.py` contains the reviewer prompt text.
@@ -341,8 +358,6 @@ Current modules:
 - `aws/console_url.py` builds AWS federation console login URLs.
 - `tests/` covers credential handler behavior, policy validation, and session
   policy generation.
-
-Broker-side request logging to DynamoDB is not implemented yet.
 
 ### `scripts/`
 
@@ -428,11 +443,18 @@ Use it for:
 
 The broker still needs:
 
-- request logging to DynamoDB
-- a request log table in infrastructure
 - stronger human and agent identity mapping
 - agent tool execution after credentials are issued
 - more complete resource coverage for the full demo story
+
+### More App Work
+
+The Nuxt app still needs:
+
+- admin screens for creating humans, agents, and free-text policies
+- employee screens for requesting access and receiving console URLs
+- WebSocket integration with `services/agent-api/`
+- live customer support LLM behavior instead of simulated chat streaming
 
 ### `demo-data/`
 
