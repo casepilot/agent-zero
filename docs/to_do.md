@@ -23,7 +23,7 @@
 21. [x] Create the single Nuxt app in `app/`. Skeleton created with Tailwind CSS and shadcn-vue.
 22. [ ] Add Nuxt admin screens for creating humans, agents, and free-text policies.
 23. [ ] Add Nuxt employee screens for requesting access and receiving console URLs.
-24. [x] Add the customer support demo chat screen to the single Nuxt app. Static desktop chat UI is in place with simulated streaming.
+24. [x] Add the customer support demo chat screen to the single Nuxt app. Static desktop chat UI is in place on dynamic chat routes with simulated streaming.
 25. [x] Add Amplify hosting infrastructure for `app/`.
 26. [x] Remove the separate support agent UI.
 27. [ ] Connect the Nuxt chat flow to the customer support LLM agent.

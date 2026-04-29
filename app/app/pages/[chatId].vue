@@ -107,13 +107,20 @@ const streamChunks = [
   'If the prompt asks for unrelated or sensitive records, the broker should deny it and log the reason.',
 ]
 
-const activeChatId = ref(chats[0].id)
 const draft = ref('')
 const isStreaming = ref(false)
 const messagesEl = ref<HTMLElement | null>(null)
 let streamTimer: ReturnType<typeof setInterval> | undefined
 
-const activeChat = computed(() => chats.find(chat => chat.id === activeChatId.value) ?? chats[0])
+const route = useRoute()
+const routeChatId = computed(() => {
+  const chatId = route.params.chatId
+
+  return Array.isArray(chatId) ? chatId[0] : chatId
+})
+
+const activeChatId = computed(() => routeChatId.value ?? '')
+const activeChat = computed(() => chats.find(chat => chat.id === activeChatId.value))
 const activeMessages = computed(() => messagesByChat[activeChatId.value] ?? [])
 
 function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
@@ -131,9 +138,8 @@ function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
   })
 }
 
-function selectChat(chatId: string) {
-  activeChatId.value = chatId
-  scrollToBottom('auto')
+async function selectChat(chatId: string) {
+  await navigateTo(`/${chatId}`)
 }
 
 async function signOut() {
@@ -148,6 +154,11 @@ function sendMessage() {
   }
 
   const chatMessages = messagesByChat[activeChatId.value]
+
+  if (!chatMessages) {
+    return
+  }
+
   const timestamp = Date.now()
 
   chatMessages.push({
@@ -182,6 +193,7 @@ function sendMessage() {
   }, 520)
 }
 
+watch(activeChatId, () => scrollToBottom('auto'))
 onMounted(() => scrollToBottom('auto'))
 onBeforeUnmount(() => {
   if (streamTimer) {
@@ -275,11 +287,11 @@ onBeforeUnmount(() => {
             </div>
             <div>
               <h2 class="text-xl font-semibold tracking-normal">
-                {{ activeChat.title }}
+                {{ activeChat?.title ?? 'Unknown chat' }}
               </h2>
               <p class="mt-1 flex items-center gap-2 text-sm text-slate-400">
                 <CheckCircle2 class="size-4 text-sky-300" />
-                Desktop demo conversation
+                {{ activeChat ? 'Desktop demo conversation' : 'No matching chat route' }}
               </p>
             </div>
           </div>
@@ -294,7 +306,10 @@ onBeforeUnmount(() => {
           ref="messagesEl"
           class="min-h-0 flex-1 overflow-y-auto px-10 pb-40 pt-8"
         >
-          <div class="mx-auto flex max-w-4xl flex-col gap-5">
+          <div
+            v-if="activeChat"
+            class="mx-auto flex max-w-4xl flex-col gap-5"
+          >
             <article
               v-for="message in activeMessages"
               :key="message.id"
@@ -327,9 +342,39 @@ onBeforeUnmount(() => {
               </div>
             </article>
           </div>
+
+          <div
+            v-else
+            class="mx-auto flex min-h-full max-w-xl flex-col items-center justify-center text-center"
+          >
+            <div class="relative mb-7 flex size-24 items-center justify-center">
+              <div class="absolute inset-0 rounded-full bg-sky-300/15 blur-2xl" />
+              <div class="relative flex size-16 items-center justify-center rounded-lg border border-white/12 bg-white/[0.075] text-sky-200 shadow-[0_0_34px_rgba(125,211,252,0.24)] backdrop-blur-xl">
+                <MessageSquare class="size-8" />
+              </div>
+            </div>
+            <p class="text-sm font-medium text-sky-100/80">
+              Empty route
+            </p>
+            <h2 class="mt-3 text-3xl font-semibold tracking-normal text-white">
+              This chat does not exist.
+            </h2>
+            <p class="mt-4 max-w-md text-base leading-7 text-slate-400">
+              Choose a seeded chat from the left panel or return home to start from the empty state.
+            </p>
+            <NuxtLink
+              to="/"
+              class="mt-7 inline-flex h-11 items-center justify-center rounded-lg border border-white/12 bg-white/[0.075] px-4 text-sm font-medium text-slate-100 transition-colors hover:bg-white/[0.12] hover:text-white"
+            >
+              Back home
+            </NuxtLink>
+          </div>
         </div>
 
-        <div class="pointer-events-none absolute inset-x-0 bottom-0 px-10 pb-7 pt-12 [background:linear-gradient(to_top,#070b12_0%,rgba(7,11,18,0.92)_48%,transparent_100%)]">
+        <div
+          v-if="activeChat"
+          class="pointer-events-none absolute inset-x-0 bottom-0 px-10 pb-7 pt-12 [background:linear-gradient(to_top,#070b12_0%,rgba(7,11,18,0.92)_48%,transparent_100%)]"
+        >
           <form
             class="pointer-events-auto mx-auto flex max-w-4xl items-end gap-3 rounded-lg border border-white/12 bg-white/[0.075] p-3 shadow-[0_24px_90px_rgba(0,0,0,0.42)] backdrop-blur-2xl"
             @submit.prevent="sendMessage"
