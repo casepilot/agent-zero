@@ -20,5 +20,7 @@ class IamAgentStack(Stack):
             user_pool=self.auth.user_pool,
             users_table=self.data.users_table,
             policy_table=self.data.policy_table,
+            customer_data_table=self.data.customer_data_table,
+            analytics_data_table=self.data.analytics_data_table,
         )
         self.frontend_hosting = FrontendHosting(self, "FrontendHosting")

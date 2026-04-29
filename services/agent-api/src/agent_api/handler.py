@@ -81,11 +81,15 @@ def sign_request(method: str, url: str) -> AWSRequest:
     return aws_request
 
 
-def call_credentials_endpoint(payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+def call_credentials_endpoint(
+    *,
+    user_id: str,
+    payload: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
     query = {
-        "action": payload.get("action", ""),
-        "resource": payload.get("resource", ""),
+        "user_id": user_id,
         "reason": payload.get("reason", ""),
+        "is_staff": str(bool(payload.get("is_staff", True))).lower(),
     }
     credentials_url = f"{os.environ['CREDENTIALS_URL']}?{urlencode(query, quote_via=quote)}"
     prepared_request = sign_request("GET", credentials_url).prepare()
@@ -154,8 +158,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         aws_request_id=aws_request_id,
         human_user_id=human_user_id,
         payload_keys=sorted(payload.keys()),
-        requested_action=payload.get("action"),
-        requested_resource=payload.get("resource"),
+        has_reason=bool(payload.get("reason")),
     )
 
     try:
@@ -178,7 +181,12 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         )
 
     try:
-        status_code, broker_body = call_credentials_endpoint(payload)
+        if not human_user_id:
+            raise RuntimeError("Cognito sub was missing from the request context")
+        status_code, broker_body = call_credentials_endpoint(
+            user_id=human_user_id,
+            payload=payload,
+        )
     except Exception as error:
         log(
             "agent_broker_call_exception",

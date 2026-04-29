@@ -39,6 +39,103 @@ AGENT_USER = {
     "is_human": False,
 }
 
+CUSTOMER_ROWS = [
+    {
+        "customer_id": f"cust-{index:03d}",
+        "name": name,
+        "email": f"{name.lower().replace(' ', '.')}@example.com",
+        "plan": plan,
+        "account_status": status,
+        "support_note": note,
+    }
+    for index, (name, plan, status, note) in enumerate(
+        [
+            ("Ava Johnson", "business", "active", "Asked about invoice timing."),
+            ("Noah Smith", "starter", "active", "Needs address confirmation."),
+            ("Mia Lee", "enterprise", "active", "VIP support route."),
+            ("Leo Brown", "starter", "suspended", "Payment failed twice."),
+            ("Zara Wilson", "business", "active", "Requested plan upgrade."),
+            ("Ethan Taylor", "business", "active", "Open ticket on login issue."),
+            ("Sofia Davis", "starter", "active", "Asked for receipt copy."),
+            ("Liam Martin", "enterprise", "active", "Security contact updated."),
+            ("Isla Anderson", "starter", "active", "Password reset completed."),
+            ("Oliver Thomas", "business", "active", "Checking renewal date."),
+            ("Amelia Moore", "enterprise", "active", "Contract owner changed."),
+            ("Jack White", "starter", "closed", "Account closed by request."),
+            ("Grace Harris", "business", "active", "Support escalation pending."),
+            ("Henry Clark", "starter", "active", "Asked about data export."),
+            ("Chloe Lewis", "enterprise", "active", "SLA review scheduled."),
+            ("Lucas Walker", "business", "active", "Billing contact updated."),
+            ("Ruby Hall", "starter", "active", "Trial extension approved."),
+            ("Mason Young", "business", "suspended", "Fraud review hold."),
+            ("Ella King", "enterprise", "active", "Dedicated CSM assigned."),
+            ("James Wright", "starter", "active", "Asked about cancellation."),
+            ("Harper Scott", "business", "active", "Feature request logged."),
+            ("Archie Green", "enterprise", "active", "Data residency question."),
+            ("Lily Baker", "starter", "active", "Email bounce resolved."),
+            ("William Adams", "business", "active", "Upgrade quote sent."),
+            ("Evie Nelson", "enterprise", "active", "Quarterly review booked."),
+        ],
+        start=1,
+    )
+]
+
+ANALYTICS_ROWS = [
+    {
+        "metric_id": "mrr-2026-04",
+        "metric_name": "monthly_recurring_revenue",
+        "segment": "all",
+        "value": 187500,
+        "period": "2026-04",
+    },
+    {
+        "metric_id": "churn-2026-04",
+        "metric_name": "logo_churn_rate",
+        "segment": "all",
+        "value": "2.8%",
+        "period": "2026-04",
+    },
+    {
+        "metric_id": "support-csat-2026-04",
+        "metric_name": "support_csat",
+        "segment": "support",
+        "value": "94%",
+        "period": "2026-04",
+    },
+    {
+        "metric_id": "enterprise-growth-2026-04",
+        "metric_name": "enterprise_growth",
+        "segment": "enterprise",
+        "value": "11.4%",
+        "period": "2026-04",
+    },
+    {
+        "metric_id": "trial-conversion-2026-04",
+        "metric_name": "trial_conversion",
+        "segment": "starter",
+        "value": "18.2%",
+        "period": "2026-04",
+    },
+]
+
+DEMO_POLICIES = {
+    "admin@example.com": (
+        "Admin User is an administrator. They may read and write policy-table "
+        "when creating, reviewing, or editing access policies for users and "
+        "agents. They should receive the minimum actions needed for the task."
+    ),
+    "employee1@example.com": (
+        "Employee One is a customer support employee. They may read customer_data "
+        "for specific, legitimate customer support reasons. They must not access "
+        "analytics_data or edit policies."
+    ),
+    "customer_support_agent": (
+        "customer_support_agent is a customer support AI agent. It may read "
+        "customer_data for specific support cases. It must not access analytics_data "
+        "or policy-table."
+    ),
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -161,6 +258,9 @@ def get_cognito_user_id(cognito: Any, user_pool_id: str, username: str) -> str |
 def bootstrap_demo_users(
     cognito: Any,
     users_table: Any,
+    policy_table: Any,
+    customer_data_table: Any,
+    analytics_data_table: Any,
     user_pool_id: str,
 ) -> None:
     for user in HUMAN_USERS:
@@ -175,11 +275,33 @@ def bootstrap_demo_users(
             }
         )
         print(f"Bootstrapped human user {user['username']} as {user_id}")
+        policy_table.put_item(
+            Item={
+                "user_id": user_id,
+                "policy": DEMO_POLICIES[user["username"]],
+            }
+        )
+        print(f"Bootstrapped demo policy for {user['username']}")
 
     users_table.put_item(Item=AGENT_USER)
     print(f"Bootstrapped agent user {AGENT_USER['user_id']}")
+    policy_table.put_item(
+        Item={
+            "user_id": AGENT_USER["user_id"],
+            "policy": DEMO_POLICIES[AGENT_USER["user_id"]],
+        }
+    )
+    print(f"Bootstrapped demo policy for {AGENT_USER['user_id']}")
 
-    print("Policy table intentionally left empty.")
+    with customer_data_table.batch_writer() as batch:
+        for row in CUSTOMER_ROWS:
+            batch.put_item(Item=row)
+    print(f"Bootstrapped {len(CUSTOMER_ROWS)} customer_data rows")
+
+    with analytics_data_table.batch_writer() as batch:
+        for row in ANALYTICS_ROWS:
+            batch.put_item(Item=row)
+    print(f"Bootstrapped {len(ANALYTICS_ROWS)} analytics_data rows")
 
 
 def delete_users_table_item(users_table: Any, user_id: str, dry_run: bool) -> None:
@@ -189,6 +311,20 @@ def delete_users_table_item(users_table: Any, user_id: str, dry_run: bool) -> No
 
     users_table.delete_item(Key={"user_id": user_id})
     print(f"Deleted DynamoDB users-table item {user_id}")
+
+
+def delete_table_item(
+    table: Any,
+    key: dict[str, str],
+    description: str,
+    dry_run: bool,
+) -> None:
+    if dry_run:
+        print(f"DRY RUN: would delete {description} {key}")
+        return
+
+    table.delete_item(Key=key)
+    print(f"Deleted {description} {key}")
 
 
 def find_users_table_ids_by_username(users_table: Any, username: str) -> list[str]:
@@ -237,6 +373,9 @@ def delete_cognito_user(
 def teardown_demo_users(
     cognito: Any,
     users_table: Any,
+    policy_table: Any,
+    customer_data_table: Any,
+    analytics_data_table: Any,
     user_pool_id: str,
     dry_run: bool,
 ) -> None:
@@ -255,6 +394,12 @@ def teardown_demo_users(
 
         for users_table_id in sorted(set(users_table_ids)):
             delete_users_table_item(users_table, users_table_id, dry_run)
+            delete_table_item(
+                policy_table,
+                {"user_id": users_table_id},
+                "DynamoDB policy-table item",
+                dry_run,
+            )
 
         if user_id:
             delete_cognito_user(cognito, user_pool_id, username, dry_run)
@@ -264,6 +409,27 @@ def teardown_demo_users(
                 print(f"No DynamoDB users-table items found for {username}.")
 
     delete_users_table_item(users_table, AGENT_USER["user_id"], dry_run)
+    delete_table_item(
+        policy_table,
+        {"user_id": AGENT_USER["user_id"]},
+        "DynamoDB policy-table item",
+        dry_run,
+    )
+
+    for row in CUSTOMER_ROWS:
+        delete_table_item(
+            customer_data_table,
+            {"customer_id": row["customer_id"]},
+            "DynamoDB customer_data item",
+            dry_run,
+        )
+    for row in ANALYTICS_ROWS:
+        delete_table_item(
+            analytics_data_table,
+            {"metric_id": row["metric_id"]},
+            "DynamoDB analytics_data item",
+            dry_run,
+        )
 
 
 def main() -> int:
@@ -276,19 +442,38 @@ def main() -> int:
     outputs = get_stack_outputs(cloudformation, args.stack_name)
     user_pool_id = find_output(outputs, "UserPoolId")
     users_table_name = find_output(outputs, "UsersTableName")
+    policy_table_name = find_output(outputs, "PolicyTableName")
+    customer_data_table_name = find_output(outputs, "CustomerDataTableName")
+    analytics_data_table_name = find_output(outputs, "AnalyticsDataTableName")
     users_table = dynamodb.Table(users_table_name)
+    policy_table = dynamodb.Table(policy_table_name)
+    customer_data_table = dynamodb.Table(customer_data_table_name)
+    analytics_data_table = dynamodb.Table(analytics_data_table_name)
 
     print(f"Using Cognito user pool: {user_pool_id}")
     print(f"Using users table: {users_table_name}")
+    print(f"Using policy table: {policy_table_name}")
+    print(f"Using customer data table: {customer_data_table_name}")
+    print(f"Using analytics data table: {analytics_data_table_name}")
 
     if args.command == "bootstrap":
         if args.execute:
             print("--execute is only needed for teardown; ignoring it for bootstrap.")
-        bootstrap_demo_users(cognito, users_table, user_pool_id)
+        bootstrap_demo_users(
+            cognito,
+            users_table,
+            policy_table,
+            customer_data_table,
+            analytics_data_table,
+            user_pool_id,
+        )
     else:
         teardown_demo_users(
             cognito=cognito,
             users_table=users_table,
+            policy_table=policy_table,
+            customer_data_table=customer_data_table,
+            analytics_data_table=analytics_data_table,
             user_pool_id=user_pool_id,
             dry_run=not args.execute,
         )

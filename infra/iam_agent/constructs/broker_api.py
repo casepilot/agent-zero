@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from aws_cdk import Aws, CfnOutput, Duration
+from aws_cdk import Aws, BundlingOptions, CfnOutput, DockerImage, Duration
 from aws_cdk import aws_apigateway as apigateway
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as lambda_
@@ -17,16 +17,42 @@ class BrokerApi(Construct):
         user_pool,
         users_table,
         policy_table,
+        customer_data_table,
+        analytics_data_table,
     ) -> None:
         super().__init__(scope, construct_id)
 
         repo_root = Path(__file__).resolve().parents[3]
         broker_code_path = repo_root / "services" / "broker-api" / "src"
+        broker_service_path = repo_root / "services" / "broker-api"
         agent_code_path = repo_root / "services" / "agent-api" / "src"
         openai_secret = secretsmanager.Secret.from_secret_name_v2(
             self,
             "OpenAiSecret",
             "openai-key",
+        )
+
+        self.broker_credentials_role = iam.Role(
+            self,
+            "BrokerCredentialsRole",
+            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+            description="Broad target role for AgentZero to scope down with STS session policies.",
+        )
+        self.broker_credentials_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["dynamodb:*"],
+                resources=[
+                    policy_table.table_arn,
+                    f"{policy_table.table_arn}/index/*",
+                    customer_data_table.table_arn,
+                    f"{customer_data_table.table_arn}/index/*",
+                    analytics_data_table.table_arn,
+                    f"{analytics_data_table.table_arn}/index/*",
+                ],
+            )
+        )
+        self.broker_credentials_role.add_to_policy(
+            iam.PolicyStatement(actions=["s3:*"], resources=["*"])
         )
 
         # AgentZero is the IAM agent. It owns broker-side credential decisions.
@@ -36,11 +62,27 @@ class BrokerApi(Construct):
             function_name="AgentZero",
             runtime=lambda_.Runtime.PYTHON_3_11,
             handler="broker_api.handlers.credentials.handler",
-            code=lambda_.Code.from_asset(str(broker_code_path)),
-            timeout=Duration.seconds(10),
+            code=lambda_.Code.from_asset(
+                str(broker_service_path),
+                bundling=BundlingOptions(
+                    image=DockerImage.from_registry("public.ecr.aws/sam/build-python3.11"),
+                    command=[
+                        "bash",
+                        "-c",
+                        "pip install -r requirements.txt -t /asset-output && cp -R src/* /asset-output/",
+                    ],
+                ),
+            ),
+            timeout=Duration.seconds(30),
             environment={
                 "USERS_TABLE_NAME": users_table.table_name,
                 "POLICY_TABLE_NAME": policy_table.table_name,
+                "POLICY_TABLE_ARN": policy_table.table_arn,
+                "CUSTOMER_DATA_TABLE_NAME": customer_data_table.table_name,
+                "CUSTOMER_DATA_TABLE_ARN": customer_data_table.table_arn,
+                "ANALYTICS_DATA_TABLE_NAME": analytics_data_table.table_name,
+                "ANALYTICS_DATA_TABLE_ARN": analytics_data_table.table_arn,
+                "BROKER_CREDENTIALS_ROLE_ARN": self.broker_credentials_role.role_arn,
                 "OPENAI_SECRET_NAME": "openai-key",
             },
         )
@@ -48,6 +90,7 @@ class BrokerApi(Construct):
         users_table.grant_read_data(self.broker_lambda)
         policy_table.grant_read_data(self.broker_lambda)
         openai_secret.grant_read(self.broker_lambda)
+        self.broker_credentials_role.grant_assume_role(self.broker_lambda)
 
         self.api = apigateway.RestApi(
             self,
