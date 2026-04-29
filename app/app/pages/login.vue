@@ -1,15 +1,51 @@
 <script setup lang="ts">
-import { ArrowRight, Eye, KeyRound, ShieldCheck, UserRound } from 'lucide-vue-next'
+import { AlertCircle, ArrowRight, KeyRound, Loader2, ShieldCheck, UserRound } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { getAmplifyAuthErrorMessage, useAmplifyAuth } from '~/composables/useAmplifyAuth'
 
 const username = ref('')
 const password = ref('')
-const showPassword = ref(false)
+const errorMessage = ref('')
+const isSubmitting = ref(false)
+const { signInWithPassword } = useAmplifyAuth()
+
+watch([username, password], ([nextUsername, nextPassword]) => {
+  if (!nextUsername.trim() || !nextPassword) {
+    errorMessage.value = ''
+  }
+})
 
 async function handleContinue() {
-  await navigateTo('/flight-change')
+  if (isSubmitting.value) {
+    return
+  }
+
+  const trimmedUsername = username.value.trim()
+
+  if (!trimmedUsername || !password.value) {
+    errorMessage.value = 'Enter your email and password.'
+    return
+  }
+
+  errorMessage.value = ''
+  isSubmitting.value = true
+
+  try {
+    const result = await signInWithPassword(trimmedUsername, password.value)
+
+    if (result.nextStep.signInStep !== 'DONE') {
+      errorMessage.value = 'This account needs an additional sign-in step that is not supported yet.'
+      return
+    }
+
+    await navigateTo('/chats')
+  } catch (error) {
+    errorMessage.value = getAmplifyAuthErrorMessage(error)
+  } finally {
+    isSubmitting.value = false
+  }
 }
 </script>
 
@@ -42,7 +78,7 @@ async function handleContinue() {
             for="username"
             class="text-base text-white/86"
           >
-            Username
+            Email
           </Label>
           <div class="relative">
             <UserRound class="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
@@ -50,8 +86,10 @@ async function handleContinue() {
               id="username"
               v-model="username"
               name="username"
+              type="email"
               autocomplete="username"
-              placeholder="deepak"
+              placeholder="you@example.com"
+              :aria-invalid="!!errorMessage"
               class="h-14 border-white/12 bg-slate-950/52 pl-12 text-base text-white placeholder:text-slate-500 focus-visible:border-sky-300 focus-visible:ring-sky-300/20"
             />
           </div>
@@ -70,20 +108,22 @@ async function handleContinue() {
               id="password"
               v-model="password"
               name="password"
-              :type="showPassword ? 'text' : 'password'"
+              type="password"
               autocomplete="current-password"
               placeholder="••••••••"
-              class="h-14 border-white/12 bg-slate-950/52 pl-12 pr-12 text-base text-white placeholder:text-slate-500 focus-visible:border-sky-300 focus-visible:ring-sky-300/20"
+              :aria-invalid="!!errorMessage"
+              class="h-14 border-white/12 bg-slate-950/52 pl-12 text-base text-white placeholder:text-slate-500 focus-visible:border-sky-300 focus-visible:ring-sky-300/20"
             />
-            <button
-              type="button"
-              class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-sky-100"
-              aria-label="Toggle password visibility"
-              @click="showPassword = !showPassword"
-            >
-              <Eye class="size-5" />
-            </button>
           </div>
+        </div>
+
+        <div
+          v-if="errorMessage"
+          class="flex items-start gap-3 rounded-lg border border-red-300/20 bg-red-500/10 px-4 py-3 text-sm leading-6 text-red-100"
+          role="alert"
+        >
+          <AlertCircle class="mt-0.5 size-4 shrink-0 text-red-200" />
+          <p>{{ errorMessage }}</p>
         </div>
 
         <div class="flex items-center justify-between gap-4 pt-1 text-base text-slate-300">
@@ -106,9 +146,16 @@ async function handleContinue() {
           type="submit"
           size="lg"
           class="group h-14 w-full bg-sky-300 text-base text-slate-950 shadow-[0_16px_42px_rgba(56,189,248,0.22)] hover:bg-sky-200"
+          :disabled="isSubmitting"
         >
-          Continue
-          <ArrowRight class="transition-transform group-hover/button:translate-x-0.5" />
+          <Loader2
+            v-if="isSubmitting"
+            class="animate-spin"
+          />
+          <template v-else>
+            Continue
+            <ArrowRight class="transition-transform group-hover/button:translate-x-0.5" />
+          </template>
         </Button>
       </form>
     </section>
