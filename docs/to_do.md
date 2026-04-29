@@ -2,7 +2,7 @@
 
 1. [x] Spin up a Python CDK app in `infra/`.
 2. [x] Create the base CDK stack and environment config.
-3. [ ] Add DynamoDB tables for principals, policies, request logs, and demo app data.
+3. [ ] Add DynamoDB tables for principals, policies, request logs, and demo app data. Users and policy tables are added; request logs and demo data remain.
 4. [x] Add Cognito user pool, app client, and groups for `admin` and `employee`.
 5. [ ] Add broad target IAM roles for DynamoDB, S3, and future AWS resource access.
 6. [ ] Create `services/shared/` for shared types, schemas, errors, and logging helpers.
@@ -28,7 +28,7 @@
 26. [ ] Properly build out `apps/support-agent/`; currently only the Nuxt chat UI template has been dropped in.
 27. [ ] Connect the Nuxt chat app to the customer support LLM agent.
 28. [ ] Add demo data for customers, flights, bookings, and sensitive internal records.
-29. [ ] Add scripts for seeding demo data and printing deployed stack outputs.
+29. [ ] Add scripts for seeding demo data and printing deployed stack outputs. Demo user bootstrap now has a dry-run teardown command.
 30. [ ] Write docs for architecture, API usage, threat model, and the hackathon demo script.
 31. [ ] Run an end-to-end demo path for human approval, agent approval, and agent denial.
 

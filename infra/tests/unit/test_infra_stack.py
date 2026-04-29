@@ -47,3 +47,49 @@ def test_support_agent_amplify_resources_created():
             ),
         },
     )
+
+
+def test_dynamodb_user_and_policy_tables_created():
+    app = core.App()
+    stack = IamAgentStack(app, "iam-agent-data")
+    template = assertions.Template.from_stack(stack)
+
+    template.resource_count_is("AWS::DynamoDB::Table", 2)
+    template.has_resource_properties(
+        "AWS::DynamoDB::Table",
+        {
+            "TableName": "users-table",
+            "KeySchema": [
+                {
+                    "AttributeName": "user_id",
+                    "KeyType": "HASH",
+                },
+            ],
+            "AttributeDefinitions": [
+                {
+                    "AttributeName": "user_id",
+                    "AttributeType": "S",
+                },
+            ],
+            "BillingMode": "PAY_PER_REQUEST",
+        },
+    )
+    template.has_resource_properties(
+        "AWS::DynamoDB::Table",
+        {
+            "TableName": "policy-table",
+            "KeySchema": [
+                {
+                    "AttributeName": "user_id",
+                    "KeyType": "HASH",
+                },
+            ],
+            "AttributeDefinitions": [
+                {
+                    "AttributeName": "user_id",
+                    "AttributeType": "S",
+                },
+            ],
+            "BillingMode": "PAY_PER_REQUEST",
+        },
+    )
