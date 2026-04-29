@@ -23,6 +23,12 @@ cd "$REPO_ROOT"
 
 echo "$(date '+%Y-%m-%d %H:%M:%S %z') starting git sync"
 
+current_branch="$(git branch --show-current)"
+if [[ "$current_branch" != "main" ]]; then
+  echo "current branch is $current_branch, not main; skipping git sync"
+  exit 0
+fi
+
 git add -A
 
 if ! git diff --cached --quiet; then
@@ -32,7 +38,7 @@ else
 fi
 
 if git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
-  git pull --rebase --autostash
+  git pull --no-rebase --autostash
 else
   echo "no upstream configured for $(git rev-parse --abbrev-ref HEAD); skipping pull"
 fi
