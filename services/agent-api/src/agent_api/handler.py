@@ -577,6 +577,42 @@ class WebSocketAgentStream:
             )
             return
 
+        if data_type == "ResponseReasoningSummaryDeltaEvent":
+            item_id = getattr(data, "item_id", str(uuid.uuid4()))
+            if not self.reasoning_active:
+                self.reasoning_active = True
+                self.next_order()
+                self.send_delta_event(
+                    message_id=item_id,
+                    message_type=MessageType.REASONING,
+                    operation=OperationType.ADD,
+                    status=MessageStatus.IN_PROGRESS,
+                )
+            delta = getattr(data, "delta", "")
+            content = delta if isinstance(delta, str) else json.dumps(delta, default=str)
+            self.send_delta_event(
+                message_id=item_id,
+                message_type=MessageType.REASONING,
+                operation=OperationType.APPEND,
+                status=MessageStatus.IN_PROGRESS,
+                content=content,
+            )
+            return
+
+        if data_type == "ResponseReasoningSummaryDoneEvent" and self.reasoning_active:
+            self.reasoning_active = False
+            message = self.message_record(
+                message_id=getattr(data, "item_id", str(uuid.uuid4())),
+                message_type=MessageType.REASONING,
+                status=MessageStatus.COMPLETED,
+                summary=[getattr(data, "text", "")],
+            )
+            self.send_delta_completed_event(
+                message=message,
+                message_type=MessageType.REASONING,
+            )
+            return
+
         item = getattr(data, "item", None)
         item_type = item.__class__.__name__ if item is not None else ""
 

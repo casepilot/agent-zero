@@ -10,7 +10,7 @@
 8. [x] Wire the Broker API Lambda behind API Gateway.
 9. [x] Add Cognito auth for human requests to the Agent API.
 10. [x] Add IAM auth for Agent Lambda requests to the Broker API credentials endpoint.
-11. [x] Add principal and policy lookup from DynamoDB. Broker currently uses a temporary trusted `user_id` query param from Agent API; remove this after Agent API forwards the Cognito sub.
+11. [x] Add principal and policy lookup from DynamoDB. Agent API forwards the trusted Cognito sub to Broker API as the principal user_id.
 12. [x] Add a resource catalog that describes stack resources and their ARNs.
 13. [x] Add the LLM reviewer with structured JSON output.
 14. [x] Add deterministic validation for LLM decisions, allowed actions, resources, durations, and deny rules.
