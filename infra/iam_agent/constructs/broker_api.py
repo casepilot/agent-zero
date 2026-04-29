@@ -127,7 +127,7 @@ class BrokerApi(Construct):
             runtime=lambda_.Runtime.PYTHON_3_11,
             handler="agent_api.handler.handler",
             code=lambda_.Code.from_asset(str(agent_code_path)),
-            timeout=Duration.seconds(15),
+            timeout=Duration.seconds(45),
             environment={
                 "CREDENTIALS_URL": credentials_url,
                 "OPENAI_SECRET_NAME": "openai-key",
