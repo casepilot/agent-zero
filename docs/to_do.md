@@ -26,7 +26,7 @@
 24. [x] Create the Nuxt customer support agent app in `apps/support-agent/`.
 25. [x] Add Amplify hosting infrastructure for `apps/support-agent/`.
 26. [ ] Properly build out `apps/support-agent/`; currently only the Nuxt chat UI template has been dropped in.
-27. [ ] Connect the Nuxt chat app to the customer support LLM agent.
+27. [ ] Connect the Nuxt chat app to the customer support LLM agent. Agent API now has a WebSocket-backed OpenAI Agents SDK friendly assistant stream.
 28. [ ] Add demo data for customers, flights, bookings, and sensitive internal records. customer_data and analytics_data are bootstrapped; flights, bookings, and sensitive internal records remain.
 29. [ ] Add scripts for seeding demo data and printing deployed stack outputs. Demo user bootstrap now seeds and tears down users, policies, customer_data, and analytics_data.
 30. [ ] Write docs for architecture, API usage, threat model, and the hackathon demo script.
