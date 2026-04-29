@@ -9,6 +9,7 @@ import {
 let isConfigured = false
 
 export interface AuthSessionProfile {
+  email: string
   username: string
   subject: string
   groups: string[]
@@ -159,13 +160,19 @@ export function useAmplifyAuth() {
       requireAmplifyAuth()
 
       const session = await fetchAuthSession({ forceRefresh })
-      const payload = session.tokens?.accessToken?.payload || {}
-      const groups = groupsFromPayload(payload)
+      const accessPayload = session.tokens?.accessToken?.payload || {}
+      const idPayload = session.tokens?.idToken?.payload || {}
+      const groups = groupsFromPayload(accessPayload)
       const role = roleFromGroups(groups)
+      const username = typeof accessPayload.username === 'string' ? accessPayload.username : ''
+      const email = typeof idPayload.email === 'string'
+        ? idPayload.email
+        : username.includes('@') ? username : ''
 
       return {
-        username: typeof payload.username === 'string' ? payload.username : '',
-        subject: typeof payload.sub === 'string' ? payload.sub : '',
+        email,
+        username,
+        subject: typeof accessPayload.sub === 'string' ? accessPayload.sub : '',
         groups,
         ...role,
       }

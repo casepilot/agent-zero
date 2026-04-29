@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import MarkdownIt from 'markdown-it'
 import {
   AlertCircle,
   Bot,
   Brain,
   CheckCircle2,
+  Landmark,
   LogOut,
   Loader2,
   RefreshCcw,
@@ -21,6 +23,22 @@ const draft = ref('')
 const messagesEl = ref<HTMLElement | null>(null)
 const sessionProfile = ref<AuthSessionProfile | null>(null)
 const sessionProfileError = ref('')
+const markdown = new MarkdownIt({
+  html: false,
+  linkify: true,
+  breaks: true,
+})
+const defaultLinkOpen = markdown.renderer.rules.link_open
+  || ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options))
+
+markdown.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+  const token = tokens[idx]
+  token?.attrSet('target', '_blank')
+  token?.attrSet('rel', 'noreferrer')
+
+  return defaultLinkOpen(tokens, idx, options, env, self)
+}
+
 const { getSessionProfile, signOut: signOutFromAuth } = useAmplifyAuth()
 const {
   turns,
@@ -62,9 +80,9 @@ async function signOut() {
 }
 
 async function sendMessage() {
-  const text = draft.value.trim()
+  const text = draft.value
 
-  if (!text || isBusy.value) {
+  if (!text.trim() || isBusy.value) {
     return
   }
 
@@ -88,14 +106,92 @@ function isTurnLoading(turn: AgentChatTurn) {
   return ['connecting', 'waiting', 'thinking', 'answering'].includes(turn.status)
 }
 
-const displayName = computed(() => {
+function renderMarkdown(value: string) {
+  return markdown.render(value)
+}
+
+function toolToneClass(tool: AgentChatTurn['tools'][number]) {
+  if (tool.tone === 'approved' || tool.tone === 'completed') {
+    return 'border-emerald-200/14 bg-emerald-300/[0.08] text-emerald-100'
+  }
+
+  if (tool.tone === 'denied') {
+    return 'border-amber-200/18 bg-amber-300/[0.09] text-amber-100'
+  }
+
+  if (tool.tone === 'failed') {
+    return 'border-red-300/18 bg-red-500/[0.10] text-red-100'
+  }
+
+  return 'border-sky-200/12 bg-slate-950/32 text-slate-300'
+}
+
+function toolStatusClass(tool: AgentChatTurn['tools'][number]) {
+  if (tool.tone === 'approved' || tool.tone === 'completed') {
+    return 'text-emerald-200'
+  }
+
+  if (tool.tone === 'denied') {
+    return 'text-amber-200'
+  }
+
+  if (tool.tone === 'failed') {
+    return 'text-red-200'
+  }
+
+  return 'text-sky-200'
+}
+
+function isToolLoading(tool: AgentChatTurn['tools'][number]) {
+  return tool.tone === 'running'
+}
+
+function isToolSuccessful(tool: AgentChatTurn['tools'][number]) {
+  return tool.tone === 'approved' || tool.tone === 'completed'
+}
+
+const displayEmail = computed(() => {
   const profile = sessionProfile.value
 
   if (!profile) {
     return 'Checking session'
   }
 
-  return profile.username || 'Signed in user'
+  return profile.email || 'Signed in'
+})
+
+const emptyState = computed(() => {
+  const role = sessionProfile.value?.role
+
+  if (role === 'admin') {
+    return {
+      eyebrow: 'AgentZero Bank Admin',
+      title: 'Manage bank access safely',
+      description: 'Create users, update policies, and review privileged bank-data workflows without standing AWS access.',
+    }
+  }
+
+  if (role === 'employee') {
+    return {
+      eyebrow: 'AgentZero Bank Operations',
+      title: 'Request bank data access',
+      description: 'Ask for customer profiles, balances, transactions, support requests, or operational metrics with a clear business reason.',
+    }
+  }
+
+  if (role === 'customer') {
+    return {
+      eyebrow: 'AgentZero Bank Assistant',
+      title: 'Ask about your banking details',
+      description: 'Get help with your profile, balances, transactions, and support requests through a policy-checked banking assistant.',
+    }
+  }
+
+  return {
+    eyebrow: 'AgentZero Bank',
+    title: 'Secure banking assistant',
+    description: 'Ask about bank records or access needs. Sensitive data requests are checked before the agent proceeds.',
+  }
 })
 
 const roleToneClass = computed(() => {
@@ -152,10 +248,10 @@ onBeforeUnmount(() => {
         </div>
         <div class="min-w-0">
           <p class="truncate text-sm font-semibold leading-5">
-            {{ sessionProfile?.roleLabel || 'Loading role' }}
+            {{ displayEmail }}
           </p>
           <p class="truncate text-xs leading-5 opacity-75">
-            {{ sessionProfileError || displayName }}
+            {{ sessionProfileError || 'Signed in' }}
           </p>
         </div>
       </div>
@@ -176,31 +272,23 @@ onBeforeUnmount(() => {
         ref="messagesEl"
         class="min-h-0 flex-1 overflow-y-auto px-10 pb-40 pt-24"
       >
-        <div class="mx-auto flex max-w-4xl flex-col gap-7">
+        <div class="mx-auto flex max-w-6xl flex-col gap-7">
           <div
             v-if="!turns.length"
             class="mx-auto flex min-h-[52vh] max-w-2xl flex-col items-center justify-center text-center"
           >
-            <div class="mb-6 flex size-16 items-center justify-center rounded-lg bg-sky-300 text-slate-950 shadow-[0_0_38px_rgba(125,211,252,0.38)]">
-              <Bot class="size-8" />
+            <div class="mb-6 flex size-16 items-center justify-center rounded-lg bg-emerald-300 text-slate-950 shadow-[0_0_38px_rgba(110,231,183,0.34)]">
+              <Landmark class="size-8" />
             </div>
             <p class="text-base font-medium text-sky-100/80">
-              IAM Agent
+              {{ emptyState.eyebrow }}
             </p>
             <h1 class="mt-3 text-4xl font-semibold tracking-normal text-white">
-              Ask for support access
+              {{ emptyState.title }}
             </h1>
             <p class="mt-4 max-w-xl text-base leading-7 text-slate-400">
-              Start with the customer request, ticket context, or policy question you want the agent to handle.
+              {{ emptyState.description }}
             </p>
-            <div
-              v-if="sessionProfile"
-              class="mt-6 inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm"
-              :class="roleToneClass"
-            >
-              <ShieldCheck class="size-4" />
-              Current role: {{ sessionProfile.roleLabel }}
-            </div>
           </div>
 
           <article
@@ -209,7 +297,7 @@ onBeforeUnmount(() => {
             class="flex flex-col gap-5"
           >
             <div class="flex justify-end">
-              <div class="max-w-2xl rounded-lg bg-sky-300 px-5 py-4 text-[15px] leading-7 text-slate-950 shadow-[0_16px_50px_rgba(0,0,0,0.22)]">
+              <div class="max-w-4xl whitespace-pre-wrap break-words rounded-lg bg-sky-300 px-5 py-4 text-[15px] leading-7 text-slate-950 shadow-[0_16px_50px_rgba(0,0,0,0.22)]">
                 {{ turn.userText }}
               </div>
             </div>
@@ -219,7 +307,7 @@ onBeforeUnmount(() => {
                 <Bot class="size-5" />
               </div>
 
-              <div class="flex w-full max-w-2xl flex-col gap-3">
+              <div class="flex w-full max-w-4xl flex-col gap-3">
                 <div class="rounded-lg border border-white/10 bg-white/[0.075] px-5 py-4 text-[15px] leading-7 text-slate-100 shadow-[0_16px_50px_rgba(0,0,0,0.22)] backdrop-blur-xl">
                   <div
                     v-if="turn.reasoning || turn.status === 'thinking' || turn.phase === 'Preparing answer'"
@@ -252,35 +340,50 @@ onBeforeUnmount(() => {
                     <div
                       v-for="tool in turn.tools"
                       :key="tool.id"
-                      class="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-slate-950/32 px-3 py-2 text-sm text-slate-300"
+                      class="rounded-lg border px-3 py-2 text-sm"
+                      :class="toolToneClass(tool)"
                     >
-                      <span class="flex min-w-0 items-center gap-2">
-                        <Wrench class="size-4 shrink-0 text-sky-200" />
-                        <span class="truncate">{{ tool.name }}</span>
-                      </span>
-                      <span
-                        class="flex shrink-0 items-center gap-1.5 text-xs"
-                        :class="tool.status === 'completed' ? 'text-emerald-200' : 'text-sky-200'"
+                      <div class="flex items-center justify-between gap-3">
+                        <span class="flex min-w-0 items-center gap-2">
+                          <Wrench
+                            class="size-4 shrink-0"
+                            :class="toolStatusClass(tool)"
+                          />
+                          <span class="min-w-0 text-sm font-medium leading-5">{{ tool.label }}</span>
+                        </span>
+                        <span
+                          class="flex shrink-0 items-center gap-1.5 text-xs font-medium"
+                          :class="toolStatusClass(tool)"
+                        >
+                          <CheckCircle2
+                            v-if="isToolSuccessful(tool)"
+                            class="size-3.5"
+                          />
+                          <AlertCircle
+                            v-else-if="tool.tone === 'denied' || tool.tone === 'failed'"
+                            class="size-3.5"
+                          />
+                          <Loader2
+                            v-else-if="isToolLoading(tool)"
+                            class="size-3.5 animate-spin"
+                          />
+                          {{ tool.statusLabel }}
+                        </span>
+                      </div>
+                      <p
+                        v-if="tool.detail"
+                        class="mt-1.5 text-xs leading-5 opacity-75"
                       >
-                        <CheckCircle2
-                          v-if="tool.status === 'completed'"
-                          class="size-3.5"
-                        />
-                        <Loader2
-                          v-else
-                          class="size-3.5 animate-spin"
-                        />
-                        {{ tool.status === 'completed' ? 'Done' : 'Running' }}
-                      </span>
+                        {{ tool.detail }}
+                      </p>
                     </div>
                   </div>
 
-                  <p
+                  <div
                     v-if="turn.answer"
-                    class="whitespace-pre-wrap"
-                  >
-                    {{ turn.answer }}
-                  </p>
+                    class="markdown-body"
+                    v-html="renderMarkdown(turn.answer)"
+                  />
                   <div
                     v-else-if="turn.status !== 'failed'"
                     class="flex items-center gap-2 text-slate-300"
@@ -338,14 +441,14 @@ onBeforeUnmount(() => {
       <div class="pointer-events-none absolute inset-x-0 bottom-0 px-10 pb-7 pt-12 [background:linear-gradient(to_top,#070b12_0%,rgba(7,11,18,0.92)_48%,transparent_100%)]">
         <div
           v-if="setupError"
-          class="pointer-events-auto mx-auto mb-3 flex max-w-4xl items-center gap-3 rounded-lg border border-amber-300/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100"
+          class="pointer-events-auto mx-auto mb-3 flex max-w-6xl items-center gap-3 rounded-lg border border-amber-300/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100"
         >
           <AlertCircle class="size-4 shrink-0" />
           {{ setupError }}
         </div>
 
         <form
-          class="pointer-events-auto mx-auto flex max-w-4xl items-end gap-3 rounded-lg border border-white/12 bg-white/[0.075] p-3 shadow-[0_24px_90px_rgba(0,0,0,0.42)] backdrop-blur-2xl"
+          class="pointer-events-auto mx-auto flex max-w-6xl items-end gap-3 rounded-lg border border-white/12 bg-white/[0.075] p-3 shadow-[0_24px_90px_rgba(0,0,0,0.42)] backdrop-blur-2xl"
           @submit.prevent="sendMessage"
         >
           <textarea
