@@ -59,9 +59,7 @@ agent-zero/
       pages/
         index.vue
         login.vue
-        chats/
-          index.vue
-          [chatId].vue
+        chat.vue
       plugins/
         amplify.client.ts
 
@@ -200,13 +198,12 @@ Current state:
   browser-side Amplify Auth session.
 - Tailwind CSS and shadcn-vue are configured.
 - `lucide-vue-next` is used for icons.
-- `/` redirects to `/chats`.
+- `/` redirects to `/chat`.
 - `app/app/pages/login.vue` is the login screen wired to Cognito through the
   Amplify client SDK.
-- `app/app/pages/chats/index.vue` is the themed empty chat home state with a
-  link to `/chats/flight-change`.
-- `app/app/pages/chats/[chatId].vue` is the desktop chat interface with seeded
-  chat routes and local simulated streaming.
+- `app/app/pages/chat.vue` is the single desktop chat interface. It starts as
+  an empty chat with a bottom prompt input, simulated streaming, and visible
+  sign out.
 - `app/app/composables/useAmplifyAuth.ts` contains shared Amplify Auth helpers.
 - `app/app/middleware/auth.global.ts` protects every route except `/login`.
 - `app/app/plugins/amplify.client.ts` configures Amplify on the client.

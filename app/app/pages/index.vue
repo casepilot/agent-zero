@@ -1,9 +1,9 @@
 <script setup lang="ts">
 useHead({
-  title: 'Chats | IAM Agent',
+  title: 'Chat | IAM Agent',
 })
 
-await navigateTo('/chats', { replace: true })
+await navigateTo('/chat', { replace: true })
 </script>
 
 <template>

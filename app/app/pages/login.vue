@@ -44,7 +44,7 @@ async function handleContinue() {
       return
     }
 
-    await navigateTo('/chats')
+    await navigateTo('/chat')
   } catch (error) {
     errorMessage.value = getAmplifyAuthErrorMessage(error)
   } finally {

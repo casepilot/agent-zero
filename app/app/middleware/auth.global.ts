@@ -2,7 +2,7 @@ import { useAmplifyAuth } from '~/composables/useAmplifyAuth'
 
 export default defineNuxtRouteMiddleware(async (to) => {
   if (to.path === '/') {
-    return navigateTo('/chats', { replace: true })
+    return navigateTo('/chat', { replace: true })
   }
 
   if (import.meta.server) {
@@ -16,7 +16,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
     await getCurrentUser()
 
     if (isLoginRoute) {
-      return navigateTo('/chats', { replace: true })
+      return navigateTo('/chat', { replace: true })
     }
   } catch {
     if (!isLoginRoute) {
