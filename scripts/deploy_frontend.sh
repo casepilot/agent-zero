@@ -8,6 +8,7 @@ INFRA_DIR="$REPO_ROOT/infra"
 STACK_NAME="${STACK_NAME:-IamAgentStack}"
 AWS_PROFILE_NAME="${AWS_PROFILE_NAME:-openai-hackathon}"
 AWS_REGION_NAME="${AWS_REGION_NAME:-ap-southeast-2}"
+CDK_REQUIRE_APPROVAL="${CDK_REQUIRE_APPROVAL:-never}"
 
 if [[ ! -d "$INFRA_DIR" ]]; then
   echo "Could not find infra directory at: $INFRA_DIR" >&2
@@ -46,6 +47,7 @@ fi
 echo "Deploying $STACK_NAME from $INFRA_DIR"
 echo "AWS profile: $AWS_PROFILE_NAME"
 echo "AWS region: $AWS_REGION_NAME"
+echo "CDK require approval: $CDK_REQUIRE_APPROVAL"
 echo "Amplify app root: app"
 
 export AWS_PROFILE="$AWS_PROFILE_NAME"
@@ -58,4 +60,4 @@ credential_exports="$(aws configure export-credentials --profile "$AWS_PROFILE_N
 eval "$credential_exports"
 
 cd "$INFRA_DIR"
-exec cdk deploy "$STACK_NAME" --app ".venv/bin/python app.py" "$@"
+exec cdk deploy "$STACK_NAME" --app ".venv/bin/python app.py" --require-approval "$CDK_REQUIRE_APPROVAL" "$@"
