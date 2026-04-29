@@ -20,6 +20,22 @@ cdk bootstrap --profile openai-hackathon
 
 The target AWS account is `338375260114` and the target region is `ap-southeast-2`.
 
+## Frontend Deploy Slash Command
+
+This repo has a local Codex command for the frontend deploy flow:
+
+```text
+/deploy-frontend
+```
+
+It runs:
+
+```bash
+scripts/deploy_frontend.sh
+```
+
+The script deploys `IamAgentStack` with the `openai-hackathon` AWS profile. The Amplify app still builds from the monorepo `app/` folder.
+
 ## Bootstrap Demo User Data First
 
 After the CDK deploy finishes, bootstrap the demo user data from the repo root before running the demo:

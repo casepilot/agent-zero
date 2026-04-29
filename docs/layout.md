@@ -15,6 +15,9 @@ agent-zero/
   .gitignore
   AGENTS.md
   README.md
+  .codex/
+    commands/
+      deploy-frontend.md
   .codex-automation/
     locks/
       layout-refresh.lock/
@@ -125,6 +128,7 @@ agent-zero/
 
   scripts/
     bootstrap_demo_users.py
+    deploy_frontend.sh
     automation/
       git_sync.sh
       install_launchd.sh
@@ -270,10 +274,27 @@ Local helper scripts.
 Current scripts:
 
 - `bootstrap_demo_users.py` bootstraps or tears down demo Cognito users, the demo agent record, demo policies, `customer_data` rows, and `analytics_data` rows.
+- `deploy_frontend.sh` runs the single-stack CDK deploy for the frontend hosting path.
 - `automation/update_layout_with_codex.sh` runs Codex to refresh this layout doc.
 - `automation/git_sync.sh` stages, commits, and pulls from the current branch.
 - `automation/install_launchd.sh` installs the local launchd jobs.
 - `launchd/*.plist` defines the local layout-refresh and git-sync launch agents.
+
+### `.codex/`
+
+Project-local Codex configuration.
+
+Current files:
+
+- `commands/deploy-frontend.md` is the repo-local frontend deploy slash command.
+
+Use it from this repo with:
+
+```text
+/deploy-frontend
+```
+
+It runs `scripts/deploy_frontend.sh`.
 
 ### `.codex-automation/`
 
