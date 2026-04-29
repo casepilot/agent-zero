@@ -24,7 +24,6 @@ install_agent() {
   echo "installed $label"
 }
 
-install_agent "com.agent-zero.layout-refresh"
 install_agent "com.agent-zero.git-sync"
 
 echo "launch agents installed"

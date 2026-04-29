@@ -2,23 +2,17 @@
 
 Use simple language.
 
-Before making project changes, read these files:
+Before making project changes, read `README.md`.
 
-1. `docs/project.md`
-   - Use this to understand what the product does.
-   - Use this for the project purpose, context, access model, and demo story.
+Use it to understand:
 
-2. `docs/layout.md`
-   - Use this to understand the target repo structure.
-   - Follow this layout when creating new folders and files.
+- what the product does
+- the project purpose and access model
+- the current credential flow
+- the repo layout
+- the demo story
 
-3. `docs/to_do.md`
-   - Use this to understand the current build plan.
-   - When the user asks what is next, refer to this file.
-   - When making plans, use this file as the source of truth.
-   - Update this file when tasks are completed or when the build plan changes.
-
-Keep implementation choices aligned with these docs unless the user gives newer instructions.
+Keep implementation choices aligned with the README unless the user gives newer instructions.
 
 ## CDK Deploy
 
