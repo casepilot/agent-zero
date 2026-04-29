@@ -257,8 +257,8 @@ Current constructs:
 - `data.py` creates seven DynamoDB tables:
   - `users-table`
   - `policy-table`
-  - `customer_data`
-  - `analytics_data`
+  - `bank_customer_profiles`
+  - `bank_operational_metrics`
   - `transactions`
   - `account_data`
   - `request_logs`
@@ -349,8 +349,8 @@ Current state:
 - Loads the principal profile from `users-table`.
 - Loads a principal policy from `policy-table`.
 - Loads the OpenAI key from Secrets Manager.
-- Builds a resource catalog for `users_table`, `user_pool`, `customer_data`,
-  `analytics_data`, `transactions`, `account_data`, and `policy_table`.
+- Builds a resource catalog for `bank_customer_profiles`, `bank_operational_metrics`, and
+  `policy_table`.
 - Calls an OpenAI reviewer for a structured access decision.
 - Validates decisions with deterministic allowlists, deny rules, and schema
   checks.
@@ -383,8 +383,8 @@ Local helper scripts.
 Current scripts:
 
 - `bootstrap_demo_users.py` bootstraps demo Cognito users, the demo agent
-  record, demo policies, `customer_data`, `analytics_data`, `transactions`, and
-  `account_data` rows. It also supports a dry-run teardown by default.
+  record, demo policies, `bank_customer_profiles` rows, and `bank_operational_metrics` rows. It
+  also supports a dry-run teardown by default.
 - `deploy_frontend.sh` runs the single-stack CDK deploy for the frontend hosting
   path.
 - `automation/update_layout_with_codex.sh` runs Codex to refresh this layout

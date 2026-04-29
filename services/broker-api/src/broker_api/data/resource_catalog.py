@@ -30,42 +30,46 @@ def get_resource_catalog() -> dict[str, Resource]:
                 "users and group membership."
             ),
         ),
-        "customer_data": Resource(
-            key="customer_data",
-            table_name=os.environ["CUSTOMER_DATA_TABLE_NAME"],
-            table_arn=os.environ["CUSTOMER_DATA_TABLE_ARN"],
+        "bank_customer_profiles": Resource(
+            key="bank_customer_profiles",
+            table_name=os.environ["BANK_CUSTOMER_PROFILES_TABLE_NAME"],
+            table_arn=os.environ["BANK_CUSTOMER_PROFILES_TABLE_ARN"],
             purpose=(
-                "Sensitive customer records for support work. Contains names, "
-                "emails, plan, account status, and support notes."
+                "Sensitive retail bank customer records for support and KYC "
+                "work. Contains customer identity, contact details, risk tier, "
+                "account status, relationship manager, and support notes."
             ),
         ),
-        "analytics_data": Resource(
-            key="analytics_data",
-            table_name=os.environ["ANALYTICS_DATA_TABLE_NAME"],
-            table_arn=os.environ["ANALYTICS_DATA_TABLE_ARN"],
+        "bank_operational_metrics": Resource(
+            key="bank_operational_metrics",
+            table_name=os.environ["BANK_OPERATIONAL_METRICS_TABLE_NAME"],
+            table_arn=os.environ["BANK_OPERATIONAL_METRICS_TABLE_ARN"],
             purpose=(
-                "Aggregated business analytics and metrics. This is for company "
-                "analyst work and must not be exposed to customers."
+                "Aggregated bank operating metrics for analysts and leaders. "
+                "Includes deposits, card spend, fraud rates, liquidity, branch "
+                "volume, and portfolio health; no customer-level PII."
             ),
         ),
-        "transactions": Resource(
-            key="transactions",
-            table_name=os.environ["TRANSACTIONS_TABLE_NAME"],
-            table_arn=os.environ["TRANSACTIONS_TABLE_ARN"],
+        "bank_transactions": Resource(
+            key="bank_transactions",
+            table_name=os.environ["BANK_TRANSACTIONS_TABLE_NAME"],
+            table_arn=os.environ["BANK_TRANSACTIONS_TABLE_ARN"],
             purpose=(
-                "Transaction records for company operational and reporting "
-                "work. Contains transaction ids, customer ids, amounts, status, "
-                "and timestamps."
+                "Bank transaction ledger for transfers, deposits, withdrawals, "
+                "card purchases, reversals, and merchant activity. Contains "
+                "customer_id, user_id, account_id, amount, merchant, channel, "
+                "risk signal, status, and timestamp."
             ),
         ),
-        "account_data": Resource(
-            key="account_data",
-            table_name=os.environ["ACCOUNT_DATA_TABLE_NAME"],
-            table_arn=os.environ["ACCOUNT_DATA_TABLE_ARN"],
+        "bank_balances": Resource(
+            key="bank_balances",
+            table_name=os.environ["BANK_BALANCES_TABLE_NAME"],
+            table_arn=os.environ["BANK_BALANCES_TABLE_ARN"],
             purpose=(
-                "Account self-service records keyed by user_id. Contains "
-                "account balance, plan, and account status for the signed-in "
-                "principal."
+                "Retail customer balance and account summary table keyed by "
+                "user_id. Contains the signed-in customer's account ids, "
+                "available/current balances, currency, overdraft status, and "
+                "last statement date."
             ),
         ),
         "policy_table": Resource(

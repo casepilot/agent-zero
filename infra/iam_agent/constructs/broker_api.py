@@ -33,6 +33,15 @@ class _PythonServiceBundling:
                         "-m",
                         "pip",
                         "install",
+                        "--platform",
+                        "manylinux2014_aarch64",
+                        "--implementation",
+                        "cp",
+                        "--python-version",
+                        "3.11",
+                        "--only-binary=:all:",
+                        "--upgrade",
+                        "--no-cache-dir",
                         "-r",
                         str(requirements_path),
                         "-t",
@@ -55,10 +64,10 @@ class BrokerApi(Construct):
         user_pool,
         users_table,
         policy_table,
-        customer_data_table,
-        analytics_data_table,
-        transactions_table,
-        account_data_table,
+        bank_customer_profiles_table,
+        bank_operational_metrics_table,
+        bank_transactions_table,
+        bank_balances_table,
         request_logs_table,
         user_pool_client_id: str,
     ) -> None:
@@ -74,21 +83,33 @@ class BrokerApi(Construct):
         )
         broker_bundling = BundlingOptions(
             image=DockerImage.from_registry("public.ecr.aws/sam/build-python3.11"),
+            local=_PythonServiceBundling(broker_service_path),
             command=[
                 "bash",
                 "-c",
-                "pip install -r requirements.txt -t /asset-output && cp -R src/* /asset-output/",
+                (
+                    "pip install --platform manylinux2014_aarch64 "
+                    "--implementation cp --python-version 3.11 "
+                    "--only-binary=:all: --upgrade --no-cache-dir "
+                    "-r requirements.txt -t /asset-output && "
+                    "cp -R src/* /asset-output/"
+                ),
             ],
-            local=_PythonServiceBundling(broker_service_path),
         )
         agent_bundling = BundlingOptions(
             image=DockerImage.from_registry("public.ecr.aws/sam/build-python3.11"),
+            local=_PythonServiceBundling(agent_service_path),
             command=[
                 "bash",
                 "-c",
-                "pip install -r requirements.txt -t /asset-output && cp -R src/* /asset-output/",
+                (
+                    "pip install --platform manylinux2014_aarch64 "
+                    "--implementation cp --python-version 3.11 "
+                    "--only-binary=:all: --upgrade --no-cache-dir "
+                    "-r requirements.txt -t /asset-output && "
+                    "cp -R src/* /asset-output/"
+                ),
             ],
-            local=_PythonServiceBundling(agent_service_path),
         )
 
         # AgentZero is the IAM agent. It owns broker-side credential decisions.
@@ -103,7 +124,8 @@ class BrokerApi(Construct):
                 str(broker_service_path),
                 bundling=broker_bundling,
             ),
-            timeout=Duration.seconds(30),
+            memory_size=1024,
+            timeout=Duration.minutes(15),
             environment={
                 "USERS_TABLE_NAME": users_table.table_name,
                 "USERS_TABLE_ARN": users_table.table_arn,
@@ -111,14 +133,14 @@ class BrokerApi(Construct):
                 "USER_POOL_ARN": user_pool.user_pool_arn,
                 "POLICY_TABLE_NAME": policy_table.table_name,
                 "POLICY_TABLE_ARN": policy_table.table_arn,
-                "CUSTOMER_DATA_TABLE_NAME": customer_data_table.table_name,
-                "CUSTOMER_DATA_TABLE_ARN": customer_data_table.table_arn,
-                "ANALYTICS_DATA_TABLE_NAME": analytics_data_table.table_name,
-                "ANALYTICS_DATA_TABLE_ARN": analytics_data_table.table_arn,
-                "TRANSACTIONS_TABLE_NAME": transactions_table.table_name,
-                "TRANSACTIONS_TABLE_ARN": transactions_table.table_arn,
-                "ACCOUNT_DATA_TABLE_NAME": account_data_table.table_name,
-                "ACCOUNT_DATA_TABLE_ARN": account_data_table.table_arn,
+                "BANK_CUSTOMER_PROFILES_TABLE_NAME": bank_customer_profiles_table.table_name,
+                "BANK_CUSTOMER_PROFILES_TABLE_ARN": bank_customer_profiles_table.table_arn,
+                "BANK_OPERATIONAL_METRICS_TABLE_NAME": bank_operational_metrics_table.table_name,
+                "BANK_OPERATIONAL_METRICS_TABLE_ARN": bank_operational_metrics_table.table_arn,
+                "BANK_TRANSACTIONS_TABLE_NAME": bank_transactions_table.table_name,
+                "BANK_TRANSACTIONS_TABLE_ARN": bank_transactions_table.table_arn,
+                "BANK_BALANCES_TABLE_NAME": bank_balances_table.table_name,
+                "BANK_BALANCES_TABLE_ARN": bank_balances_table.table_arn,
                 "REQUEST_LOGS_TABLE_NAME": request_logs_table.table_name,
                 "OPENAI_SECRET_NAME": "openai-key",
             },
@@ -138,14 +160,14 @@ class BrokerApi(Construct):
                     f"{users_table.table_arn}/index/*",
                     policy_table.table_arn,
                     f"{policy_table.table_arn}/index/*",
-                    customer_data_table.table_arn,
-                    f"{customer_data_table.table_arn}/index/*",
-                    analytics_data_table.table_arn,
-                    f"{analytics_data_table.table_arn}/index/*",
-                    transactions_table.table_arn,
-                    f"{transactions_table.table_arn}/index/*",
-                    account_data_table.table_arn,
-                    f"{account_data_table.table_arn}/index/*",
+                    bank_customer_profiles_table.table_arn,
+                    f"{bank_customer_profiles_table.table_arn}/index/*",
+                    bank_operational_metrics_table.table_arn,
+                    f"{bank_operational_metrics_table.table_arn}/index/*",
+                    bank_transactions_table.table_arn,
+                    f"{bank_transactions_table.table_arn}/index/*",
+                    bank_balances_table.table_arn,
+                    f"{bank_balances_table.table_arn}/index/*",
                 ],
             )
         )
@@ -209,7 +231,8 @@ class BrokerApi(Construct):
             architecture=lambda_.Architecture.ARM_64,
             handler="agent_api.authorizer.handler",
             code=agent_code,
-            timeout=Duration.seconds(10),
+            memory_size=1024,
+            timeout=Duration.minutes(15),
             environment={
                 "USER_POOL_ID": user_pool.user_pool_id,
                 "USER_POOL_CLIENT_ID": user_pool_client_id,
@@ -224,7 +247,8 @@ class BrokerApi(Construct):
             architecture=lambda_.Architecture.ARM_64,
             handler="agent_api.handler.worker_handler",
             code=agent_code,
-            timeout=Duration.seconds(120),
+            memory_size=1024,
+            timeout=Duration.minutes(15),
             environment={
                 "AGENT_MODEL": "gpt-5.5",
                 "AGENT_REASONING_EFFORT": "medium",
@@ -233,10 +257,10 @@ class BrokerApi(Construct):
                 "USER_POOL_ID": user_pool.user_pool_id,
                 "USERS_TABLE_NAME": users_table.table_name,
                 "POLICY_TABLE_NAME": policy_table.table_name,
-                "CUSTOMER_DATA_TABLE_NAME": customer_data_table.table_name,
-                "ANALYTICS_DATA_TABLE_NAME": analytics_data_table.table_name,
-                "TRANSACTIONS_TABLE_NAME": transactions_table.table_name,
-                "ACCOUNT_DATA_TABLE_NAME": account_data_table.table_name,
+                "BANK_CUSTOMER_PROFILES_TABLE_NAME": bank_customer_profiles_table.table_name,
+                "BANK_OPERATIONAL_METRICS_TABLE_NAME": bank_operational_metrics_table.table_name,
+                "BANK_TRANSACTIONS_TABLE_NAME": bank_transactions_table.table_name,
+                "BANK_BALANCES_TABLE_NAME": bank_balances_table.table_name,
             },
         )
         openai_secret.grant_read(self.agent_worker_lambda)
@@ -249,7 +273,8 @@ class BrokerApi(Construct):
             architecture=lambda_.Architecture.ARM_64,
             handler="agent_api.handler.route_handler",
             code=agent_code,
-            timeout=Duration.seconds(10),
+            memory_size=1024,
+            timeout=Duration.minutes(15),
             environment={
                 "AGENT_WORKER_FUNCTION_NAME": self.agent_worker_lambda.function_name,
             },
@@ -313,6 +338,18 @@ class BrokerApi(Construct):
         )
 
         self.agent_worker_lambda.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["execute-api:ManageConnections"],
+                resources=[
+                    (
+                        f"arn:{Aws.PARTITION}:execute-api:{Aws.REGION}:"
+                        f"{Aws.ACCOUNT_ID}:{self.agent_websocket_api.ref}/"
+                        "prod/POST/@connections/*"
+                    )
+                ],
+            )
+        )
+        self.agent_route_lambda.add_to_role_policy(
             iam.PolicyStatement(
                 actions=["execute-api:ManageConnections"],
                 resources=[

@@ -33,7 +33,7 @@ def build_session_policy(
                 else [resource.table_arn]
             ),
         }
-        if grant.resource_key == "account_data" and user_id:
+        if grant.resource_key in {"bank_balances", "bank_transactions"} and user_id:
             statement["Condition"] = {
                 "ForAllValues:StringEquals": {
                     "dynamodb:LeadingKeys": [user_id],

@@ -22,10 +22,13 @@ Rules:
 - Grant the smallest set of actions that satisfies the reason.
 - Do not require the policy to name the resource. Map the role and request
   reason to the most appropriate catalog resource.
-- customer_data is sensitive customer data. Company analysts should not get
-  general customer_data access.
-- analytics_data is internal company analytics. End customers should not get
-  analytics_data access.
+- bank_customer_profiles is sensitive bank customer PII/KYC/support data.
+  Bank analysts should not get general customer profile access.
+- bank_operational_metrics is internal aggregate bank analytics. End customers
+  should not get bank_operational_metrics access.
+- bank_balances and bank_transactions can expose customer financial data. End
+  customers may only access their own rows when their policy and reason support
+  account self-service.
 - policy_table controls access policy. Only admins may get policy_table write
   access for policy management work.
 - user_pool controls Cognito user creation and group membership. Only admins or
