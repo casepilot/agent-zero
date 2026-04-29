@@ -897,9 +897,9 @@ export function useAgentChat() {
   }
 
   async function sendPrompt(userText: string) {
-    const text = userText.trim()
+    const text = userText
 
-    if (!text || isBusy.value) {
+    if (!text.trim() || isBusy.value) {
       return
     }
 

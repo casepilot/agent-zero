@@ -79,9 +79,9 @@ async function signOut() {
 }
 
 async function sendMessage() {
-  const text = draft.value.trim()
+  const text = draft.value
 
-  if (!text || isBusy.value) {
+  if (!text.trim() || isBusy.value) {
     return
   }
 
@@ -149,14 +149,14 @@ function isToolSuccessful(tool: AgentChatTurn['tools'][number]) {
   return tool.tone === 'approved' || tool.tone === 'completed'
 }
 
-const displayName = computed(() => {
+const displayEmail = computed(() => {
   const profile = sessionProfile.value
 
   if (!profile) {
     return 'Checking session'
   }
 
-  return profile.username || 'Signed in user'
+  return profile.email || 'Signed in'
 })
 
 const roleToneClass = computed(() => {
@@ -213,10 +213,10 @@ onBeforeUnmount(() => {
         </div>
         <div class="min-w-0">
           <p class="truncate text-sm font-semibold leading-5">
-            {{ sessionProfile?.roleLabel || 'Loading role' }}
+            {{ displayEmail }}
           </p>
           <p class="truncate text-xs leading-5 opacity-75">
-            {{ sessionProfileError || displayName }}
+            {{ sessionProfileError || 'Signed in' }}
           </p>
         </div>
       </div>
@@ -237,7 +237,7 @@ onBeforeUnmount(() => {
         ref="messagesEl"
         class="min-h-0 flex-1 overflow-y-auto px-10 pb-40 pt-24"
       >
-        <div class="mx-auto flex max-w-4xl flex-col gap-7">
+        <div class="mx-auto flex max-w-6xl flex-col gap-7">
           <div
             v-if="!turns.length"
             class="mx-auto flex min-h-[52vh] max-w-2xl flex-col items-center justify-center text-center"
@@ -254,14 +254,6 @@ onBeforeUnmount(() => {
             <p class="mt-4 max-w-xl text-base leading-7 text-slate-400">
               Start with the customer request, ticket context, or policy question you want the agent to handle.
             </p>
-            <div
-              v-if="sessionProfile"
-              class="mt-6 inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm"
-              :class="roleToneClass"
-            >
-              <ShieldCheck class="size-4" />
-              Current role: {{ sessionProfile.roleLabel }}
-            </div>
           </div>
 
           <article
@@ -270,7 +262,7 @@ onBeforeUnmount(() => {
             class="flex flex-col gap-5"
           >
             <div class="flex justify-end">
-              <div class="max-w-2xl rounded-lg bg-sky-300 px-5 py-4 text-[15px] leading-7 text-slate-950 shadow-[0_16px_50px_rgba(0,0,0,0.22)]">
+              <div class="max-w-4xl whitespace-pre-wrap break-words rounded-lg bg-sky-300 px-5 py-4 text-[15px] leading-7 text-slate-950 shadow-[0_16px_50px_rgba(0,0,0,0.22)]">
                 {{ turn.userText }}
               </div>
             </div>
@@ -280,7 +272,7 @@ onBeforeUnmount(() => {
                 <Bot class="size-5" />
               </div>
 
-              <div class="flex w-full max-w-2xl flex-col gap-3">
+              <div class="flex w-full max-w-4xl flex-col gap-3">
                 <div class="rounded-lg border border-white/10 bg-white/[0.075] px-5 py-4 text-[15px] leading-7 text-slate-100 shadow-[0_16px_50px_rgba(0,0,0,0.22)] backdrop-blur-xl">
                   <div
                     v-if="turn.reasoning || turn.status === 'thinking' || turn.phase === 'Preparing answer'"
@@ -414,14 +406,14 @@ onBeforeUnmount(() => {
       <div class="pointer-events-none absolute inset-x-0 bottom-0 px-10 pb-7 pt-12 [background:linear-gradient(to_top,#070b12_0%,rgba(7,11,18,0.92)_48%,transparent_100%)]">
         <div
           v-if="setupError"
-          class="pointer-events-auto mx-auto mb-3 flex max-w-4xl items-center gap-3 rounded-lg border border-amber-300/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100"
+          class="pointer-events-auto mx-auto mb-3 flex max-w-6xl items-center gap-3 rounded-lg border border-amber-300/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100"
         >
           <AlertCircle class="size-4 shrink-0" />
           {{ setupError }}
         </div>
 
         <form
-          class="pointer-events-auto mx-auto flex max-w-4xl items-end gap-3 rounded-lg border border-white/12 bg-white/[0.075] p-3 shadow-[0_24px_90px_rgba(0,0,0,0.42)] backdrop-blur-2xl"
+          class="pointer-events-auto mx-auto flex max-w-6xl items-end gap-3 rounded-lg border border-white/12 bg-white/[0.075] p-3 shadow-[0_24px_90px_rgba(0,0,0,0.42)] backdrop-blur-2xl"
           @submit.prevent="sendMessage"
         >
           <textarea
