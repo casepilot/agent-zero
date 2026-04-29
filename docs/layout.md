@@ -2,10 +2,13 @@
 
 This file describes the current repo layout.
 
-It also lists planned folders that are part of the product plan but do not
-exist yet.
+It also lists planned or missing folders that are part of the product plan but
+do not exist yet.
 
 ## Current Layout
+
+This tree shows the useful project source files and local automation files.
+Generated dependency and build folders are listed separately below.
 
 ```text
 agent-zero/
@@ -14,7 +17,13 @@ agent-zero/
   README.md
   .codex-automation/
     locks/
+      layout-refresh.lock/
     logs/
+      git-sync.err.log
+      git-sync.out.log
+      layout-last-message.txt
+      layout-refresh.err.log
+      layout-refresh.out.log
 
   app/
     .gitignore
@@ -87,12 +96,32 @@ agent-zero/
           __init__.py
           handler.py
     broker-api/
+      requirements.txt
       src/
         broker_api/
           __init__.py
+          aws/
+            __init__.py
+            console_url.py
+            sts.py
+          data/
+            __init__.py
+            resource_catalog.py
           handlers/
             __init__.py
             credentials.py
+          llm/
+            __init__.py
+            prompts.py
+            reviewer.py
+          policy/
+            __init__.py
+            build_session_policy.py
+            schemas.py
+            validate_decision.py
+      tests/
+        test_credentials_handler.py
+        test_policy_validation.py
 
   scripts/
     bootstrap_demo_users.py
@@ -105,6 +134,20 @@ agent-zero/
       com.agent-zero.layout-refresh.plist
 ```
 
+## Generated Or Local-Only Layout
+
+These folders and files may exist in a local checkout. They are not product
+source and should not guide new feature placement.
+
+```text
+agent-zero/
+  .DS_Store
+  app/
+    node_modules/
+    .nuxt/
+    .output/
+```
+
 ## Current Folder Roles
 
 ### `app/`
@@ -115,13 +158,16 @@ Current state:
 
 - Nuxt 4 app using pnpm.
 - Tailwind CSS and shadcn-vue are configured.
+- `lucide-vue-next` is used for icons.
 - `app/app/pages/index.vue` redirects to `/home`.
 - `app/app/pages/login.vue` is a static login screen that routes to `/home` on submit.
 - `app/app/pages/home.vue` is the desktop chat interface with local simulated streaming.
 - `app/app/components/ui/` contains shadcn-style button, input, and label components.
 - `app/app/lib/utils.ts` contains the shared `cn()` class helper.
+- `app/app/plugins/` exists but is empty.
 
-The admin, employee, and customer support demo screens are not built yet.
+The real Cognito login flow, admin screens, employee request screens, and live
+customer support LLM flow are not built yet.
 
 ### `docs/`
 
@@ -137,13 +183,24 @@ Current docs:
 
 Python AWS CDK app.
 
-The stack is `IamAgentStack` and it currently uses one CDK stack.
+The stack is `IamAgentStack` and the project currently uses one CDK stack.
 
 Current constructs:
 
 - `auth.py` creates the Cognito user pool, app client, and `admin` and `employee` groups.
-- `data.py` creates `users-table` and `policy-table` DynamoDB tables.
-- `broker_api.py` creates the Broker Lambda, Agent Lambda, API Gateway routes, and IAM auth wiring.
+- `data.py` creates four DynamoDB tables:
+  - `users-table`
+  - `policy-table`
+  - `customer_data`
+  - `analytics_data`
+- `broker_api.py` creates:
+  - the broad broker credentials role used with scoped STS session policies
+  - the Broker Lambda named `AgentZero`
+  - the Agent Lambda named `UserAgent`
+  - one API Gateway REST API
+  - `GET /credentials` with IAM auth
+  - `POST /agent` with Cognito auth
+  - permissions for the agent Lambda to call the broker credentials endpoint
 - `frontend_hosting.py` creates the Amplify app and `main` branch for the Nuxt app.
 
 Current config:
@@ -152,7 +209,7 @@ Current config:
 
 Current tests:
 
-- `infra/tests/unit/test_infra_stack.py` checks Cognito, DynamoDB, API Gateway, Lambda, IAM, and Amplify resources.
+- `infra/tests/unit/test_infra_stack.py` checks Cognito, DynamoDB, API Gateway, Lambda, IAM, STS, and Amplify resources.
 
 Add new infrastructure as constructs inside `IamAgentStack`.
 Do not add another stack unless the user asks for it.
@@ -163,9 +220,14 @@ Lambda-facing service for the user-facing agent route.
 
 Current state:
 
-- Receives Cognito-authenticated `POST /agent` requests.
+- Handles Cognito-authenticated `POST /agent` requests.
+- Reads the Cognito `sub` from API Gateway authorizer claims.
+- Parses the request body for the access reason and staff flag.
 - Calls the Broker API `GET /credentials` endpoint using IAM-signed requests.
 - Returns the broker response to the caller.
+- Loads the OpenAI secret as a plumbing check.
+
+This service does not yet run the customer support LLM agent tools.
 
 ### `services/broker-api/`
 
@@ -173,10 +235,33 @@ Backend service for credential decisions.
 
 Current state:
 
-- Exposes a basic `GET /credentials` Lambda handler.
+- Exposes the `GET /credentials` Lambda handler.
 - Requires IAM-authenticated caller context from API Gateway.
-- Loads the OpenAI key from Secrets Manager to prove broker plumbing.
-- Returns request context only. LLM review and STS issuance are not implemented yet.
+- Rejects caller-supplied resource choices. The broker chooses resources from its catalog.
+- Loads a principal policy from `policy-table`.
+- Loads the OpenAI key from Secrets Manager.
+- Builds a resource catalog for `customer_data`, `analytics_data`, and `policy_table`.
+- Calls an OpenAI reviewer for a structured access decision.
+- Validates decisions with deterministic allowlists, deny rules, and schema checks.
+- Builds a scoped inline STS session policy for approved grants.
+- Calls `sts:AssumeRole` through the broker credentials role.
+- Returns temporary credentials for approved requests.
+- Returns an AWS console sign-in URL when `is_staff` is true.
+
+Current modules:
+
+- `handlers/credentials.py` contains the Lambda entry point and request flow.
+- `data/resource_catalog.py` defines broker-known resources and prompt formatting.
+- `llm/prompts.py` contains the reviewer prompt text.
+- `llm/reviewer.py` calls OpenAI and retries validation failures.
+- `policy/schemas.py` defines the structured access decision schema.
+- `policy/validate_decision.py` enforces deterministic safety rules.
+- `policy/build_session_policy.py` builds inline STS session policies.
+- `aws/sts.py` wraps `AssumeRole`.
+- `aws/console_url.py` builds AWS federation console login URLs.
+- `tests/` covers credential handler behavior, policy validation, and session policy generation.
+
+Broker-side request logging to DynamoDB is not implemented yet.
 
 ### `scripts/`
 
@@ -184,7 +269,7 @@ Local helper scripts.
 
 Current scripts:
 
-- `bootstrap_demo_users.py` bootstraps or tears down demo Cognito users and the demo agent record in `users-table`.
+- `bootstrap_demo_users.py` bootstraps or tears down demo Cognito users, the demo agent record, demo policies, `customer_data` rows, and `analytics_data` rows.
 - `automation/update_layout_with_codex.sh` runs Codex to refresh this layout doc.
 - `automation/git_sync.sh` stages, commits, and pulls from the current branch.
 - `automation/install_launchd.sh` installs the local launchd jobs.
@@ -205,14 +290,6 @@ not present in the current codebase.
 agent-zero/
   services/
     shared/
-    broker-api/
-      src/
-        broker_api/
-          auth/
-          aws/
-          data/
-          llm/
-          policy/
 
   demo-data/
     customers.json
@@ -240,32 +317,28 @@ Use it for:
 - error classes
 - logging helpers
 
-### More Broker API Modules
+### More Broker Work
 
-The broker still needs modules for:
+The broker still needs:
 
-- human and agent auth context
-- policy lookup
-- resource catalog lookup
-- LLM review
-- deterministic validation
-- session policy generation
-- `AssumeRole`
-- console URL generation
-- access request logging
+- request logging to DynamoDB
+- a request log table in infrastructure
+- stronger human and agent identity mapping
+- agent tool execution after credentials are issued
+- more complete resource coverage for the full demo story
 
 ### `demo-data/`
 
-Planned fake data for the demo.
+Planned standalone fake data for the demo.
 
-It should include both safe and sensitive records so the demo can show approvals
-and denials.
+Some demo data currently lives inline in `scripts/bootstrap_demo_users.py`.
+Move or copy it here if the project needs reusable fixtures.
 
-### Planned Docs
+### More Docs
 
-The project still needs docs for:
+Planned docs:
 
-- architecture
-- API usage
-- threat model
-- hackathon demo script
+- `architecture.md`
+- `api.md`
+- `demo-script.md`
+- `threat-model.md`
