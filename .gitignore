@@ -1,0 +1,23 @@
+# Local env files
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+.pytest_cache/
+.venv/
+*.egg-info/
+
+# Node
+node_modules/
+
+# Logs
+logs/
+*.log
+
+# OS/editor files
+.DS_Store
+.fleet/
+.idea/
+.history/

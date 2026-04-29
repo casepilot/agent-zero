@@ -24,7 +24,7 @@ iam-agent/
         broker_api.py
         data.py
         demo_resources.py
-        mcp.py
+        broker_api.py
         observability.py
         roles.py
       config/
@@ -77,18 +77,12 @@ iam-agent/
             resource_catalog.py
       tests/
 
-    mcp-server/
+    agent-api/
       pyproject.toml
       src/
-        mcp_server/
+        agent_api/
           __init__.py
           handler.py
-          broker_client.py
-          tools/
-            __init__.py
-            request_aws_access.py
-            dynamodb_read.py
-            dynamodb_update.py
       tests/
 
   apps/
@@ -146,7 +140,7 @@ Owns the AWS infrastructure:
 - Cognito
 - API Gateway
 - Broker Lambda
-- MCP Lambda Function URL
+- Agent Lambda and Broker API Gateway routes
 - DynamoDB tables
 - demo data resources
 - target IAM roles
@@ -182,13 +176,13 @@ It handles:
 - console URL generation
 - access request logging
 
-### `services/mcp-server/`
+### `services/agent-api/`
 
-The MCP-facing service for AI agents.
+The Lambda-facing service for AI agents.
 
 It should stay thin.
 
-It calls the Broker API, receives approved temporary credentials, then performs only the approved tool action.
+It receives Cognito-authenticated tool calls, calls the Broker API with IAM auth, receives approved temporary credentials, then performs only the approved tool action.
 
 ### `apps/staff/`
 

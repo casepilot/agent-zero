@@ -74,6 +74,63 @@ def test_dynamodb_user_and_policy_tables_created():
             "BillingMode": "PAY_PER_REQUEST",
         },
     )
+
+
+def test_agent_only_credentials_api_created():
+    app = core.App()
+    stack = IamAgentStack(app, "iam-agent-api")
+    template = assertions.Template.from_stack(stack)
+
+    template.resource_count_is("AWS::ApiGateway::RestApi", 1)
+    template.resource_count_is("AWS::ApiGateway::Method", 2)
+    template.resource_count_is("AWS::Lambda::Function", 2)
+    template.has_resource_properties(
+        "AWS::Lambda::Function",
+        {
+            "Handler": "broker_api.handlers.credentials.handler",
+            "ReservedConcurrentExecutions": 1,
+        },
+    )
+    template.has_resource_properties(
+        "AWS::Lambda::Function",
+        {
+            "Handler": "agent_api.handler.handler",
+            "ReservedConcurrentExecutions": 1,
+        },
+    )
+    template.has_resource_properties(
+        "AWS::ApiGateway::Method",
+        {
+            "HttpMethod": "GET",
+            "AuthorizationType": "AWS_IAM",
+        },
+    )
+    template.has_resource_properties(
+        "AWS::ApiGateway::Method",
+        {
+            "HttpMethod": "POST",
+            "AuthorizationType": "COGNITO_USER_POOLS",
+            "AuthorizerId": assertions.Match.any_value(),
+        },
+    )
+    template.has_resource_properties(
+        "AWS::IAM::Policy",
+        {
+            "PolicyDocument": {
+                "Statement": assertions.Match.array_with(
+                    [
+                        assertions.Match.object_like(
+                            {
+                                "Action": "execute-api:Invoke",
+                                "Effect": "Allow",
+                                "Resource": assertions.Match.any_value(),
+                            }
+                        )
+                    ]
+                ),
+            },
+        },
+    )
     template.has_resource_properties(
         "AWS::DynamoDB::Table",
         {

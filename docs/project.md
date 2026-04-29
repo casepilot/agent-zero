@@ -6,7 +6,7 @@ This project is a hackathon version of a Continuous Identity / Zero Standing Pri
 
 Nobody has standing AWS permissions.
 
-To get access, a human or AI agent calls a Broker API with:
+To get access, a human or AI agent request flows through the Agent API and Broker API with:
 
 - who they are
 - what they want to do
@@ -52,10 +52,11 @@ It grants one temporary session for one approved job.
 
 ## Main Flow
 
-1. A human or AI agent makes an access request.
-2. API Gateway authenticates the caller.
-3. Broker API finds the caller's policy in DynamoDB.
-4. Broker API builds LLM context from:
+1. A human calls the Agent API with Cognito auth, or an AI agent runs inside the Agent Lambda.
+2. The Agent Lambda calls the Broker API credentials endpoint with IAM auth.
+3. API Gateway authenticates the Agent Lambda with SigV4.
+4. Broker API finds the agent principal and policy in DynamoDB.
+5. Broker API builds LLM context from:
    - caller identity
    - caller type: human or agent
    - requested action
@@ -63,19 +64,18 @@ It grants one temporary session for one approved job.
    - reason for access
    - free-text policy
    - known resource catalog
-5. LLM reviewer returns a structured decision:
+6. LLM reviewer returns a structured decision:
    - approve or deny
    - reason
    - allowed AWS actions
    - allowed AWS resources
    - duration
-6. Validator checks the LLM output against hard allowlists and denylists.
-7. If denied, broker returns a denial reason.
-8. If approved, broker calls `sts:AssumeRole`.
-9. Broker passes an inline session policy through the STS `Policy` parameter.
-10. AWS returns temporary credentials.
-11. For an AI agent, broker returns the credentials.
-12. For a human, broker converts the credentials into an AWS console sign-in URL.
+7. Validator checks the LLM output against hard allowlists and denylists.
+8. If denied, broker returns a denial reason.
+9. If approved, broker calls `sts:AssumeRole`.
+10. Broker passes an inline session policy through the STS `Policy` parameter.
+11. AWS returns temporary credentials.
+12. Broker returns credentials to the Agent Lambda.
 13. CloudTrail logs the role session.
 14. The session expires naturally.
 
@@ -125,11 +125,11 @@ If approved, they receive a temporary AWS console URL.
 
 Agents do not log in through the staff UI.
 
-When an admin creates an agent, the system generates an API key.
+Agents run inside AWS Lambda.
 
-That API key is stored as the principal key in DynamoDB.
+The Agent Lambda has a tightly scoped IAM policy that lets it call only the Broker API `GET /credentials` endpoint.
 
-The agent uses the API key when calling the Broker API through an MCP tool.
+The Broker API reads the IAM caller identity from API Gateway request context and maps it to an agent record in DynamoDB.
 
 If approved, the agent receives temporary STS credentials directly.
 
@@ -206,29 +206,29 @@ Example requests:
 
 The Nuxt app talks to an LLM agent.
 
-When the agent needs AWS data, it calls the MCP tool.
+When the agent needs AWS data, it calls the Agent API.
 
-The MCP tool calls the Broker API.
+The Agent Lambda calls the Broker API credentials endpoint with IAM auth.
 
 The demo should prove both sides:
 
 - normal customer support requests are approved
 - prompt-injected or overbroad requests are denied
 
-## MCP Tool
+## Agent API
 
-The MCP server is hosted as a Lambda with a Lambda Function URL.
+The Agent API is hosted as a Lambda behind API Gateway.
 
-The agent calls this MCP tool when it needs AWS access.
+Human callers use Cognito auth to call the Agent API.
 
-The MCP tool forwards the request to the Broker API with the agent API key.
+The Agent Lambda calls the Broker API `GET /credentials` endpoint with IAM auth.
 
 The broker returns either:
 
 - temporary STS credentials
 - a denial reason
 
-The MCP tool then uses the temporary credentials to perform the approved AWS action.
+The Agent Lambda then uses the temporary credentials to perform the approved AWS action.
 
 ## Broker API
 
@@ -236,14 +236,13 @@ The Broker API is the core backend.
 
 It runs as Lambda behind API Gateway.
 
-It supports two auth modes:
+The credentials endpoint supports one auth mode:
 
-- Cognito JWT for humans
-- API key for agents
+- IAM auth for the Agent Lambda
 
 Responsibilities:
 
-- authenticate caller context
+- authenticate the Agent Lambda caller context
 - load principal policy from DynamoDB
 - load resource catalog
 - call LLM reviewer
@@ -334,12 +333,12 @@ The strongest demo path:
 5. Admin creates a customer support AI agent.
 6. Admin gives the agent a free-text customer support policy.
 7. A customer asks the Nuxt chat app to update their own flight details.
-8. Agent calls MCP.
-9. MCP calls Broker API.
+8. Agent calls the Agent API.
+9. Agent Lambda calls Broker API.
 10. Broker approves narrow DynamoDB access.
 11. Agent updates the allowed record.
 12. Customer tries prompt injection asking for sensitive internal data.
-13. Agent calls MCP or attempts access.
+13. Agent calls the Agent API or attempts access.
 14. Broker denies because the request does not match policy.
 
 ## What This Proves
