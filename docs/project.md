@@ -123,7 +123,7 @@ If approved, they receive a temporary AWS console URL.
 
 ### AI Agents
 
-Agents do not log in through the staff UI.
+Agents do not log in through the web UI.
 
 When an admin creates an agent, the system generates an API key.
 
@@ -171,9 +171,9 @@ The broker includes this catalog in the LLM system prompt so the model knows:
 - which resources are sensitive
 - which actions are possible
 
-## Admin Staff App
+## Web UI
 
-The staff app is built with Nuxt.
+The web UI is built with Nuxt.
 
 It uses Cognito auth.
 
@@ -192,11 +192,15 @@ Employee features:
 - explain why access is needed
 - receive denial reason or console URL
 
-## Customer Support Agent App
+Customer support demo features:
 
-The customer support agent frontend is built with Nuxt.
+- chat with a fake customer
+- ask about flight information
+- ask about prices
+- update the customer's own details
+- show denial for prompt injection or overbroad access
 
-It is a demo chat app where a fake customer can ask for help.
+The customer support demo lives in the same Nuxt app.
 
 Example requests:
 
@@ -204,7 +208,7 @@ Example requests:
 - ask about prices
 - update their own details
 
-The Nuxt app talks to an LLM agent.
+The Nuxt app talks to an LLM agent for the customer support flow.
 
 When the agent needs AWS data, it calls the MCP tool.
 

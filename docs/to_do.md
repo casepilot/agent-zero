@@ -20,24 +20,24 @@
 18. [ ] Add broker-side request logging to DynamoDB.
 19. [ ] Create `services/mcp-server/` with a Lambda Function URL.
 20. [ ] Add MCP tools that request broker access and then perform approved DynamoDB actions.
-21. [x] Create the Nuxt staff app in `apps/staff/`. Skeleton created with Tailwind CSS and shadcn-vue.
+21. [x] Create the single Nuxt app in `app/`. Skeleton created with Tailwind CSS and shadcn-vue.
 22. [ ] Add Nuxt admin screens for creating humans, agents, and free-text policies.
 23. [ ] Add Nuxt employee screens for requesting access and receiving console URLs.
-24. [x] Create the Nuxt customer support agent app in `apps/support-agent/`.
-25. [x] Add Amplify hosting infrastructure for `apps/support-agent/`.
-26. [ ] Properly build out `apps/support-agent/`; currently only the Nuxt chat UI template has been dropped in.
-27. [ ] Connect the Nuxt chat app to the customer support LLM agent.
+24. [ ] Add the customer support demo chat screen to the single Nuxt app.
+25. [x] Add Amplify hosting infrastructure for `app/`.
+26. [x] Remove the separate support agent UI.
+27. [ ] Connect the Nuxt chat flow to the customer support LLM agent.
 28. [ ] Add demo data for customers, flights, bookings, and sensitive internal records.
 29. [ ] Add scripts for seeding demo data and printing deployed stack outputs. Demo user bootstrap now has a dry-run teardown command.
 30. [ ] Write docs for architecture, API usage, threat model, and the hackathon demo script.
 31. [ ] Run an end-to-end demo path for human approval, agent approval, and agent denial.
+32. [x] Add local automation to refresh `docs/layout.md` with Codex every 30 minutes and run git stage, commit, and pull every 5 minutes.
 
 ## Frontend Hosting
 
 1. [ ] Push this monorepo to GitHub so Amplify can connect to the repository.
 2. [ ] Deploy `IamAgentStack` with CDK so the Amplify app and branch are created.
 3. [ ] Connect the Amplify app to the GitHub repo if CDK cannot attach the repo automatically.
-4. [ ] Confirm Amplify builds `apps/support-agent/` from the monorepo root.
-5. [ ] Add Amplify hosting for `apps/staff/`.
-6. [ ] Confirm the hosted support agent app loads from the Amplify default domain.
-7. [ ] Confirm the hosted staff app loads from the Amplify default domain.
+4. [ ] Confirm Amplify builds `app/` from the monorepo root.
+5. [x] Add Amplify hosting for `app/`.
+6. [ ] Confirm the hosted single UI loads from the Amplify default domain.

@@ -21,7 +21,7 @@ def test_cognito_auth_resources_created():
     )
 
 
-def test_support_agent_amplify_resources_created():
+def test_ui_amplify_resources_created():
     app = core.App()
     stack = IamAgentStack(app, "iam-agent")
     template = assertions.Template.from_stack(stack)
@@ -31,13 +31,13 @@ def test_support_agent_amplify_resources_created():
     template.has_resource_properties(
         "AWS::Amplify::App",
         {
-            "Name": "iam-agent-support-agent",
+            "Name": "iam-agent-ui",
             "Platform": "WEB_COMPUTE",
             "EnvironmentVariables": assertions.Match.array_with(
                 [
                     {
                         "Name": "AMPLIFY_MONOREPO_APP_ROOT",
-                        "Value": "apps/support-agent",
+                        "Value": "app",
                     },
                     {
                         "Name": "NITRO_PRESET",

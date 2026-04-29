@@ -1,0 +1,4 @@
+.DS_Store
+
+# Local automation runtime files.
+.codex-automation/

@@ -2,7 +2,7 @@ from aws_cdk import CfnOutput
 from aws_cdk import aws_amplify as amplify
 from constructs import Construct
 
-from iam_agent.config.resources import SUPPORT_AGENT_APP_ROOT
+from iam_agent.config.resources import APP_ROOT
 
 
 class FrontendHosting(Construct):
@@ -11,7 +11,7 @@ class FrontendHosting(Construct):
 
         build_spec = f"""version: 1
 applications:
-  - appRoot: {SUPPORT_AGENT_APP_ROOT}
+  - appRoot: {APP_ROOT}
     frontend:
       phases:
         preBuild:
@@ -30,16 +30,16 @@ applications:
           - node_modules/**/*
 """
 
-        self.support_agent_app = amplify.CfnApp(
+        self.ui_app = amplify.CfnApp(
             self,
-            "SupportAgentAmplifyApp",
-            name="iam-agent-support-agent",
+            "UiAmplifyApp",
+            name="iam-agent-ui",
             platform="WEB_COMPUTE",
             build_spec=build_spec,
             environment_variables=[
                 amplify.CfnApp.EnvironmentVariableProperty(
                     name="AMPLIFY_MONOREPO_APP_ROOT",
-                    value=SUPPORT_AGENT_APP_ROOT,
+                    value=APP_ROOT,
                 ),
                 amplify.CfnApp.EnvironmentVariableProperty(
                     name="NITRO_PRESET",
@@ -48,10 +48,10 @@ applications:
             ],
         )
 
-        self.support_agent_branch = amplify.CfnBranch(
+        self.ui_branch = amplify.CfnBranch(
             self,
-            "SupportAgentMainBranch",
-            app_id=self.support_agent_app.attr_app_id,
+            "UiMainBranch",
+            app_id=self.ui_app.attr_app_id,
             branch_name="main",
             enable_auto_build=True,
             stage="DEVELOPMENT",
@@ -59,11 +59,11 @@ applications:
 
         CfnOutput(
             self,
-            "SupportAgentAmplifyAppId",
-            value=self.support_agent_app.attr_app_id,
+            "UiAmplifyAppId",
+            value=self.ui_app.attr_app_id,
         )
         CfnOutput(
             self,
-            "SupportAgentAmplifyDefaultDomain",
-            value=self.support_agent_app.attr_default_domain,
+            "UiAmplifyDefaultDomain",
+            value=self.ui_app.attr_default_domain,
         )

@@ -1,114 +1,174 @@
 # Repo Layout
 
-This is the target monorepo layout for the hackathon project.
+This file describes the current repo layout.
+
+It also lists planned folders that are part of the product plan but do not
+exist yet.
+
+## Current Layout
 
 ```text
-iam-agent/
-  README.md
-  AGENTS.md
-  .env.example
+agent-zero/
   .gitignore
+  AGENTS.md
+  README.md
+  .codex-automation/
+    locks/
+    logs/
+
+  app/
+    .gitignore
+    README.md
+    package.json
+    pnpm-lock.yaml
+    nuxt.config.ts
+    tsconfig.json
+    components.json
+    public/
+      favicon.ico
+      robots.txt
+    app/
+      app.vue
+      assets/
+        css/
+          tailwind.css
+      components/
+        ui/
+          button/
+            Button.vue
+            index.ts
+          input/
+            Input.vue
+            index.ts
+          label/
+            Label.vue
+            index.ts
+      lib/
+        utils.ts
+      pages/
+        index.vue
+        login.vue
+      plugins/
+
+  docs/
+    project.md
+    to_do.md
+    layout.md
 
   infra/
+    .gitignore
+    README.md
     app.py
     cdk.json
     requirements.txt
     requirements-dev.txt
-    README.md
     iam_agent/
       __init__.py
       iam_agent_stack.py
-      constructs/
-        __init__.py
-        auth.py
-        broker_api.py
-        data.py
-        demo_resources.py
-        mcp.py
-        observability.py
-        roles.py
       config/
         __init__.py
         resources.py
+      constructs/
+        __init__.py
+        auth.py
+        data.py
+        frontend_hosting.py
+    tests/
+      __init__.py
+      unit/
+        __init__.py
+        test_infra_stack.py
 
+  scripts/
+    bootstrap_demo_users.py
+    automation/
+      git_sync.sh
+      install_launchd.sh
+      update_layout_with_codex.sh
+    launchd/
+      com.agent-zero.git-sync.plist
+      com.agent-zero.layout-refresh.plist
+```
+
+## Current Folder Roles
+
+### `app/`
+
+Nuxt app for the demo UI.
+
+Current state:
+
+- Nuxt 4 app using pnpm.
+- Tailwind CSS and shadcn-vue are configured.
+- `app/app/pages/index.vue` redirects to `/login`.
+- `app/app/pages/login.vue` is a static login screen.
+- `app/app/components/ui/` contains shadcn-style button, input, and label components.
+- `app/app/lib/utils.ts` contains the shared `cn()` class helper.
+
+The admin, employee, and customer support demo screens are not built yet.
+
+### `docs/`
+
+Project docs.
+
+Current docs:
+
+- `project.md` explains the product, access model, security model, and demo story.
+- `to_do.md` is the source of truth for build status and next work.
+- `layout.md` describes the repo layout.
+
+### `infra/`
+
+Python AWS CDK app.
+
+The stack is `IamAgentStack` and it currently uses one CDK stack.
+
+Current constructs:
+
+- `auth.py` creates the Cognito user pool, app client, and `admin` and `employee` groups.
+- `data.py` creates `users-table` and `policy-table` DynamoDB tables.
+- `frontend_hosting.py` creates the Amplify app and `main` branch for the Nuxt app.
+
+Current config:
+
+- `resources.py` stores the project name, AWS account, AWS region, Cognito group names, and Amplify app root.
+
+Current tests:
+
+- `infra/tests/unit/test_infra_stack.py` checks Cognito, DynamoDB, and Amplify resources.
+
+Add new infrastructure as constructs inside `IamAgentStack`.
+Do not add another stack unless the user asks for it.
+
+### `scripts/`
+
+Local helper scripts.
+
+Current scripts:
+
+- `bootstrap_demo_users.py` bootstraps or tears down demo Cognito users and the demo agent record in `users-table`.
+- `automation/update_layout_with_codex.sh` runs Codex to refresh this layout doc.
+- `automation/git_sync.sh` stages, commits, and pulls from the current branch.
+- `automation/install_launchd.sh` installs the local launchd jobs.
+- `launchd/*.plist` defines the local layout-refresh and git-sync launch agents.
+
+### `.codex-automation/`
+
+Local runtime folder created by the automation scripts.
+
+It is ignored by git and holds local logs and lock folders.
+
+## Planned Or Missing Layout
+
+These folders and files are part of the intended product shape, but they are
+not present in the current codebase.
+
+```text
+agent-zero/
   services/
     shared/
-      pyproject.toml
-      src/
-        iam_agent_shared/
-          __init__.py
-          types.py
-          schemas.py
-          errors.py
-          logging.py
-
     broker-api/
-      pyproject.toml
-      src/
-        broker_api/
-          __init__.py
-          handlers/
-            __init__.py
-            request_access.py
-            admin_users.py
-          auth/
-            __init__.py
-            cognito.py
-            api_key.py
-          llm/
-            __init__.py
-            reviewer.py
-            prompts.py
-            schemas.py
-          policy/
-            __init__.py
-            build_session_policy.py
-            validate_decision.py
-            allowlist.py
-            denylist.py
-          aws/
-            __init__.py
-            sts.py
-            console_url.py
-          data/
-            __init__.py
-            principal_store.py
-            request_log_store.py
-            resource_catalog.py
-      tests/
-
     mcp-server/
-      pyproject.toml
-      src/
-        mcp_server/
-          __init__.py
-          handler.py
-          broker_client.py
-          tools/
-            __init__.py
-            request_aws_access.py
-            dynamodb_read.py
-            dynamodb_update.py
-      tests/
-
-  apps/
-    staff/
-      README.md
-      package.json
-      nuxt.config.ts
-      app/
-      components/
-      server/
-      utils/
-
-    support-agent/
-      README.md
-      package.json
-      nuxt.config.ts
-      app/
-      components/
-      server/
-      utils/
 
   demo-data/
     customers.json
@@ -117,44 +177,19 @@ iam-agent/
     sensitive-internal.json
 
   docs/
-    project.md
-    to_do.md
-    layout.md
     architecture.md
     api.md
     demo-script.md
     threat-model.md
-
-  scripts/
-    seed_demo_data.py
-    create_agent_api_key.py
-    print_outputs.py
 ```
 
-## Folder Roles
-
-### `infra/`
-
-Python AWS CDK code.
-
-Owns the AWS infrastructure:
-
-- Cognito
-- API Gateway
-- Broker Lambda
-- MCP Lambda Function URL
-- DynamoDB tables
-- demo data resources
-- target IAM roles
-- CloudWatch logging
-
-The CDK app should wire resources together, not contain product logic.
+## Planned Or Missing Folder Roles
 
 ### `services/shared/`
 
-Shared Python package for common contracts.
+Planned shared Python package for common contracts.
 
-Use this for:
+Use it for:
 
 - shared types
 - JSON schemas
@@ -163,11 +198,9 @@ Use this for:
 
 ### `services/broker-api/`
 
-The main backend service.
+Planned main backend service.
 
-This is the policy brain.
-
-It handles:
+It should handle:
 
 - human and agent auth context
 - policy lookup
@@ -180,38 +213,25 @@ It handles:
 
 ### `services/mcp-server/`
 
-The MCP-facing service for AI agents.
+Planned MCP-facing service for AI agents.
 
 It should stay thin.
 
-It calls the Broker API, receives approved temporary credentials, then performs only the approved tool action.
-
-### `apps/staff/`
-
-Nuxt app for internal users.
-
-Admin users can create humans, agents, and free-text policies.
-
-Employee users can request temporary AWS access.
-
-### `apps/support-agent/`
-
-Nuxt app for the customer support AI agent demo.
-
-This is the customer-facing chat interface.
+It should call the Broker API, receive approved temporary credentials, and then
+perform only the approved tool action.
 
 ### `demo-data/`
 
-Fake data used for the demo.
+Planned fake data for the demo.
 
-Include both safe and sensitive data so the demo can show approvals and denials.
+It should include both safe and sensitive records so the demo can show approvals
+and denials.
 
-### `docs/`
+### Planned Docs
 
-Project documentation for judges and future contributors.
+The project still needs docs for:
 
-### `scripts/`
-
-Small local helper scripts.
-
-Use this for seed data, generated API keys, and printing useful CDK outputs.
+- architecture
+- API usage
+- threat model
+- hackathon demo script
