@@ -158,8 +158,12 @@ class BrokerApi(Construct):
             code=agent_code,
             timeout=Duration.seconds(120),
             environment={
-                "AGENT_MODEL": "gpt-5-nano",
+                "AGENT_MODEL": "gpt-5.5",
+                "AGENT_REASONING_EFFORT": "medium",
+                "CREDENTIALS_URL": self.api.url_for_path("/credentials"),
                 "OPENAI_SECRET_NAME": "openai-key",
+                "POLICY_TABLE_NAME": policy_table.table_name,
+                "POLICY_TABLE_ARN": policy_table.table_arn,
             },
         )
         openai_secret.grant_read(self.agent_worker_lambda)
@@ -245,6 +249,12 @@ class BrokerApi(Construct):
                         "prod/POST/@connections/*"
                     )
                 ],
+            )
+        )
+        self.agent_worker_lambda.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["execute-api:Invoke"],
+                resources=[self.api.arn_for_execute_api("GET", "/credentials", "prod")],
             )
         )
 
